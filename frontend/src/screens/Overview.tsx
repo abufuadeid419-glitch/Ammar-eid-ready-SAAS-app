@@ -16,6 +16,7 @@ import { AgentStock } from "@/src/components/StockRequests";
 import { SyncBanner } from "@/src/components/SyncBanner";
 import { MyTargetCard, SalesTargetsCard } from "@/src/components/SalesTargets";
 import { ProBanner } from "@/src/components/ProBanner";
+import { PlanPricing } from "@/src/components/PlanPricing";
 import { ProLock } from "@/src/components/ProLock";
 import { useApi, useBottomChrome } from "@/src/hooks";
 import { queryClient } from "@/src/query-client";
@@ -78,6 +79,7 @@ export default function Overview() {
             {(!useTabs || tab === "home") && (
               <>
                 {isOwner && <ProBanner />}
+                {isOwner && <PlanPricing />}
                 {isOwner && <OwnerOnboarding />}
                 {isAgent && <LocationCard />}
                 {isAgent && <MyTargetCard />}

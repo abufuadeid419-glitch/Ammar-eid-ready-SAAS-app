@@ -30,5 +30,9 @@ export function usePro() {
   return { org, pro: isPro(org), trial: trial && !isExpired(org), free: trial && isExpired(org), daysLeft: daysLeft(org), isOwner: user?.role === "OWNER" };
 }
 
+// Booking price for a published plan (shared by the plans page and the dashboard pricing card).
+export const promoOn = (p: any) => p.promo_price != null && (!p.promo_until || Date.parse(String(p.promo_until).replace(/\//g, "-")) > Date.now());
+export const priceFor = (p: any, billing: string) => (billing === "yearly" ? p.yearly_price : promoOn(p) ? p.promo_price : p.price);
+
 // Login screen trial offer -> activation screen leads with the trial form.
 export const TRIAL_INTENT_KEY = "trial_intent";

@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend-only test of the owner-dashboard Pro/VIP pricing card (PlanPricing.tsx) and the /upgrade deep link, at a 375x667 viewport. What works: the section 'خطط Pro و VIP' (plan-pricing-card) shows on the owner home with a Pro card (pricing-plan-pro) and a VIP 'اطلب عرض سعر' fallback card. The monthly/yearly toggle switches the price between 199 USD / 30 يوم and 300 USD / سنة. pricing-upgrade-pro goes to /upgrade?plan=2ad56e48...&billing=monthly|yearly and opens upgrade-request-sheet automatically, with the right amount (199 USD · 30 يوم, or 300 USD · سنوي) prefilled. pricing-compare-button and pricing-vip-contact open /upgrade without the sheet. The card does not show on the distributor home (/dist). Dark and light themes render, the page has no horizontal overflow (scrollWidth=375) and there were no page errors. FAILED: the strikethrough old price '25 USD' shows in monthly mode even though the promo (199) is HIGHER than the regular price (25). The open-request path (open-request-note) was only code-reviewed: the org has no open requests and we must not submit one. Accountant was skipped as instructed. No payment request was submitted.",
+  "backend_issues": {"critical": [], "minor": [{"endpoint": "GET /api/plans (data)", "issue": "The live Pro plan has price=25 and promo_price=199, so the 'promo' costs 8x the regular price. The monthly price (199/30 days) also costs more over a year than the yearly price (300). This looks like a data mistake in the developer plan config."}]},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PlanPricing Pro card strikethrough", "issue": "The old price '25 USD' is struck through in monthly mode, but the promo (199) is higher than the regular price (25). The condition `p.price !== p.promo_price` should be `p.promo_price < p.price`. Reference: /app/frontend/src/components/PlanPricing.tsx:75", "testID": "pricing-plan-pro", "priority": "HIGH"},
+      {"component": "Subscription plan card strikethrough", "issue": "Same bug on the /upgrade plans page: the struck-through price shows whenever promoOn(p) is true, without checking promo_price < price. Reference: /app/frontend/src/screens/Subscription.tsx:200", "testID": "plan-price-<id>", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Owner home - pricing card (light theme)", "issues": ["Gold brandPrimary rgb(197,160,89) on white is used for the price text, the 'الأكثر طلباً' badge and the white-on-gold upgrade button. Contrast is about 2.3:1, below WCAG AA 4.5:1.", "The yearly toggle label 'سنوي (الأوفر)' (best value) is hard-coded. It should only show when yearly_price is actually less than 12 x the monthly price. Here, 300 equals 12 x the regular price of 25.", "pricing-compare-button (104x40) and pricing-vip-contact (186x40) are below the 44pt minimum touch target height."]}
+    ],
+    "react_native_issues": [
+      {"component": "promoOn Date.parse", "issue": "promo_until comes as '2026/11/05' (not ISO). Date.parse handles this in Chrome, but Hermes on native may return NaN. promoOn() would then return false, and native users would see and pay 25 instead of 199. Reference: /app/frontend/src/pro.ts:34"}
+    ]
+  },
+  "test_report_links": [".screenshots/pp_monthly.png", ".screenshots/pp_yearly.png", ".screenshots/pp_sheet_monthly.png", ".screenshots/pp_sheet_yearly.png", ".screenshots/pp_light_pro.png", ".screenshots/pp_agent.png"],
+  "action_items": [
+    "Fix the strikethrough condition: show it only when promoOn(p) && p.promo_price < p.price, in PlanPricing.tsx:75 and Subscription.tsx:200.",
+    "Make promo_until parsing independent of the engine: normalize 'YYYY/MM/DD' to ISO 'YYYY-MM-DD' before Date.parse in pro.ts promoOn, or store promo_until as ISO in the backend.",
+    "Optional: show the 'الأوفر' label only when yearly is actually cheaper.",
+    "Optional: improve light-theme gold text contrast.",
+    "Optional: raise the small buttons to a 44pt touch height.",
+    "Check the plan data with the developer: a promo price of 199 against a regular price of 25 looks like a mistake."
+  ],
+  "critical_code_review_comments": [
+    "Subscription.tsx deep link: the autoOpened ref stops the sheet re-opening. The effect waits for reqs.isLoading. If /upgrade-requests errors, openReq is undefined and the sheet still opens; the server should enforce the one-open-request rule.",
+    "PlanPricing returns null while plans are loading or on error, so there is no loading skeleton or error state. That is acceptable for an upsell card."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "90% (9/10 checks pass; the strikethrough check failed)"},
+  "seed_data_creation": "None. No payment requests submitted, no SMS.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Owner org org_test_1 has no open upgrade requests (all CANCELLED, REFUNDED or APPROVED), so the deep link opens the checkout sheet. The current org plan is the unpublished TEST_UI Pro, so the Pro card shows no 'خطتك' badge. Pro plan id is 2ad56e48e4fa42228284ee9185cce090. Inject the token, reload, wait about 6s, then tap tour-skip-button."
+}

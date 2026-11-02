@@ -1,7 +1,7 @@
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Linking, Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -10,15 +10,13 @@ import { queryClient } from "@/src/query-client";
 import { useAuth } from "@/src/auth";
 import { ReceiptViewer, RequestDetails, StatusBadge } from "@/src/components/Billing";
 import { useApi, useMutate } from "@/src/hooks";
-import { MODULE_LABELS, isPro, planLabel, tierLabel } from "@/src/pro";
+import { MODULE_LABELS, isPro, planLabel, priceFor, promoOn, tierLabel } from "@/src/pro";
 import { PickedFile, pickReceiptImage, pickReceiptPdf } from "@/src/utils/receipt";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Card, Empty, Field, Header, Ionicons, Loading, Section, Segments, Sheet, T, useToast } from "@/src/ui";
 
 const OPEN = ["PENDING", "UNDER_REVIEW", "NEEDS_INFO"];
 const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-const promoOn = (p: any) => p.promo_price != null && (!p.promo_until || Date.parse(p.promo_until) > Date.now());
-const priceFor = (p: any, billing: string) => (billing === "yearly" ? p.yearly_price : promoOn(p) ? p.promo_price : p.price);
 const lim = (n: any, unit: string) => (n == null ? `${unit} بلا حد` : `حتى ${n} ${unit}`);
 
 function Line({ ok = true, text }: { ok?: boolean; text: string }) {
@@ -95,6 +93,21 @@ export default function Subscription() {
     [methods.data, sel],
   );
   const method = okMethods.find((m) => m.id === form?.method_id);
+
+  // Deep link from the dashboard pricing card: /upgrade?plan=<id>&billing=monthly|yearly opens checkout.
+  const params = useLocalSearchParams<{ plan?: string; billing?: string }>();
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current || !params.plan || !plans.data || reqs.isLoading) return;
+    autoOpened.current = true;
+    const p = plans.data.find((x) => x.id === params.plan);
+    const b = params.billing === "yearly" ? "yearly" : "monthly";
+    if (!p || openReq || priceFor(p, b) == null) return;
+    setBilling(b);
+    setSel(p);
+    setFile(null);
+    setForm({ method_id: null, amount: String(priceFor(p, b) ?? ""), ref: "", notes: "", key: newKey() });
+  }, [params.plan, params.billing, plans.data, reqs.isLoading, openReq]);
 
   const choose = (p: any) => {
     setSel(p);
@@ -184,7 +197,7 @@ export default function Subscription() {
                   <View style={{ flexDirection: "row", alignItems: "baseline", gap: spacing.sm }}>
                     <T v="title" color="brandPrimary" testID={`plan-price-${p.id}`}>{free ? "مجاناً" : price == null ? "غير متاح" : `${money(price)} ${p.currency}`}</T>
                     {!free && price != null && <T v="caption">/ {billing === "yearly" ? "سنة" : `${p.days} يوم`}</T>}
-                    {!free && billing === "monthly" && promoOn(p) && <T v="caption" style={{ textDecorationLine: "line-through" }}>{money(p.price)}</T>}
+                    {!free && billing === "monthly" && promoOn(p) && p.promo_price < p.price && <T v="caption" style={{ textDecorationLine: "line-through" }}>{money(p.price)}</T>}
                   </View>
                   <Line text={lim(p.max_employees, "موظف")} />
                   <Line text={lim(p.max_distributors, "موزع")} />

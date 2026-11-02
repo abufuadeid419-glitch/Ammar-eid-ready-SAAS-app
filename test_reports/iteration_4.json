@@ -1,0 +1,24 @@
+{
+  "summary": "Retested the iteration-3 fixes, frontend only, at 375x667 in light theme, logged in as owner (test_token_owner). All 5 checks PASS. (1) The strikethrough old price is gone: in monthly mode no element on the dashboard Pro card (pricing-plan-pro) or on any /upgrade plan card (plan-card-<id>) has line-through. Both now check promo_price < price (PlanPricing.tsx:77, Subscription.tsx:200). (2) The yearly toggle on the dashboard shows 'سنوي (الأوفر)', which is correct: 300 < 199 x (365/30) ≈ 2421. The logic matches yearly < monthlyPrice x (365/days). The /upgrade page shows plain 'سنوي'. (3) Light-theme gold is now rgb(140,106,40) (#8C6A28). Price text on a white card is about 5.0:1 and white text on the gold button is about 5.0:1, both passing WCAG AA. (4) pricing-compare-button is 104x44 and pricing-vip-contact is 186x44, so both meet the 44pt minimum. (5) Regression: pricing-upgrade-pro goes to /upgrade?plan=2ad56e48...&billing=monthly and auto-opens upgrade-request-sheet with 'المبلغ المطلوب: 199 USD · 30 يوم' and amount 199 prefilled. Not submitted. The yearly dashboard price shows '300 USD / سنة'. No page errors.",
+  "backend_issues": {"critical": [], "minor": [{"endpoint": "GET /plans (data)", "issue": "Carried over: the Pro plan has price=25 and promo_price=199, so the promo costs more than the regular price. This looks like a data mistake in the developer config."}]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [{"screen": "ProBanner", "issues": ["Minor: ProBanner.tsx:45 hard-codes 'الاشتراك السنوي هو الأوفر' (yearly is the best value). It is not tied to the same yearly-saves logic as PlanPricing."]}],
+    "react_native_issues": []
+  },
+  "test_report_links": [".screenshots/i4_light_monthly.png", ".screenshots/i4_sheet.png", ".screenshots/i4_upgrade_monthly.png"],
+  "action_items": [
+    "Optional: make the ProBanner 'السنوي هو الأوفر' copy conditional, or reword it.",
+    "Optional: check the Pro plan pricing data (promo 199 > regular 25) with the developer."
+  ],
+  "critical_code_review_comments": [
+    "promoOn now normalizes 'YYYY/MM/DD' to 'YYYY-MM-DD' before Date.parse (pro.ts:34). A date-only ISO string parses as UTC midnight, so the promo ends at 00:00 UTC on that date rather than at the end of the day. This is an acceptable edge case."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100% (5/5 retest checks)"},
+  "seed_data_creation": "None. No payment request submitted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Set localStorage theme_pref=JSON.stringify('light') to force the light theme. On /upgrade, get_by_text('سنوي').first resolves to a hidden duplicate from the dashboard screen in the stack, so scope selectors to the visible screen. Pro plan id is 2ad56e48e4fa42228284ee9185cce090."
+}

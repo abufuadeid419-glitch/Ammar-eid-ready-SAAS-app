@@ -11,3 +11,11 @@
 ## Backlog
 - P1: Store Convex deploy key securely (secret card) before any backend redeploy.
 - P2: Theme toggle on login screen; restyle remaining screens' details in light theme.
+
+## Iteration 2026-11 (b) — Dashboard Pro/VIP pricing
+- src/components/PlanPricing.tsx on owner home: live published paid plans (GET /plans), monthly/yearly toggle, promo logic shared via pro.ts (priceFor/promoOn, YYYY/MM/DD dates normalized), "upgrade" deep-links /upgrade?plan=&billing= which auto-opens checkout; VIP "request a quote" card when no VIP plan is published.
+- Plans page strikethrough only when promo < regular price. Light-theme gold darkened (#8C6A28) for contrast.
+- Tests: iterations 3–4 passed.
+## Backlog
+- Data: Pro plan promo price (199) > regular price (25) — developer should fix in plan editor.
+- P2: ProBanner "yearly is best value" copy should use the same check.
