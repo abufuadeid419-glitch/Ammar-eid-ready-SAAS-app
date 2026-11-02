@@ -1,0 +1,23 @@
+{
+  "summary": "Frontend-only retest (Expo web, 390x844) using injected session tokens. ALL PASS. (1) Login hero title 'النظام الذكي' is rgb(255,255,255) and subtitle is rgb(230,230,230) in BOTH theme_pref=light and dark, on the phone step and on the set-password step (test_token_acct). Readable on the darkened photo in screenshots. (2) PasswordField: typing 'abcdefg١٢' into login-new-password-input gives the value 'abcdefg12', and all 3 rules turn green (8 chars, letter, number). Not submitted. (3) Field digit conversion is now limited to numeric keyboards. Customer name 'محل ٣' and address 'شارع ٥' keep their Arabic digits; customer phone ٠٩٤٧١٢٣٤٥٦ -> 0947123456; product name 'عصير ٢ لتر' keeps its Arabic digit; product price ١٢٫٥ -> 12.5; stock ۱۰۰ -> 100. (4) Regression: toast-message is visibly rendered above the open customer-form Sheet (agent) and product Sheet (owner). theme-quick-toggle on owner products flips theme_pref light<->dark and re-themes the UI.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [".screenshots/login_light.jpg", ".screenshots/login_dark.jpg", ".screenshots/setpw_light.jpg", ".screenshots/cust_sheet_toast.jpg", ".screenshots/product_sheet_toast.jpg", ".screenshots/owner_light.jpg"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ui.tsx:215: the keyboardType regex /number|decimal|phone|numeric/ covers number-pad, decimal-pad, phone-pad and numeric. OK.",
+    "PasswordField.tsx:18: onChangeText now wraps toLatinDigits, so set-password and login normalise the same way. OK.",
+    "The GuidedTour modal shows on first visit for each role/screen, so tests must tap tour-skip-button first."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "seed_data_creation": "None. Only validation-failure saves; no password set, no SMS.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Tap [data-testid=tour-skip-button] if the guided tour overlay shows after login. Agent customer sheet: /dist/customers -> add-customer-button. Owner product sheet: /owner/products -> add-product-button. The toast has pointer-events none, so elementFromPoint hit-tests miss it; check it visually instead. Wait about 4-6s after load for the splash screen."
+}

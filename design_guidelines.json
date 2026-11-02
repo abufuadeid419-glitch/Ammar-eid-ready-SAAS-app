@@ -1,0 +1,223 @@
+{
+  "app_name": "Smart System (النظام الذكي)",
+  "personality": "6 Glass / Luxe DARK with 7 Dark-First Utility Data Hierarchy",
+  "personality_one_liner": "A deeply premium, cinematic, and data-rich dark mode ERP that frames business operations with luxury and precision.",
+  "color": {
+    "dark": {
+      "surface": "#090A0C",
+      "onSurface": "#FFFFFF",
+      "surfaceSecondary": "#141519",
+      "onSurfaceSecondary": "#F0F0F0",
+      "surfaceTertiary": "#1D1E24",
+      "onSurfaceTertiary": "#E2E2E2",
+      "surfaceInverse": "#FFFFFF",
+      "onSurfaceInverse": "#000000",
+      "brand": "#021041",
+      "onBrand": "#FFFFFF",
+      "brandPrimary": "#D4AF37",
+      "onBrandPrimary": "#000000",
+      "brandSecondary": "#C5A059",
+      "onBrandSecondary": "#000000",
+      "brandTertiary": "#2A271B",
+      "onBrandTertiary": "#D4AF37",
+      "accent": "#1A8663",
+      "onAccent": "#FFFFFF",
+      "accentSoft": "#103528",
+      "onAccentSoft": "#1A8663",
+      "success": "#10B981",
+      "onSuccess": "#000000",
+      "warning": "#F59E0B",
+      "onWarning": "#000000",
+      "error": "#EF4444",
+      "onError": "#FFFFFF",
+      "info": "#3B82F6",
+      "onInfo": "#FFFFFF",
+      "border": "#272930",
+      "borderStrong": "#3F424D",
+      "divider": "#1D1E24",
+      "muted": "#8A8E9B",
+      "overlay": "rgba(0,0,0,0.7)",
+      "pro": "#E5C271",
+      "onPro": "#1A1608",
+      "headerDeep": "#040608",
+      "onHeaderDeep": "#FFFFFF"
+    },
+    "light": {
+      "surface": "#F8F9FA",
+      "onSurface": "#111216",
+      "surfaceSecondary": "#FFFFFF",
+      "onSurfaceSecondary": "#1A1D24",
+      "surfaceTertiary": "#F0F1F5",
+      "onSurfaceTertiary": "#282C35",
+      "surfaceInverse": "#111216",
+      "onSurfaceInverse": "#FFFFFF",
+      "brand": "#021041",
+      "onBrand": "#FFFFFF",
+      "brandPrimary": "#C5A059",
+      "onBrandPrimary": "#FFFFFF",
+      "brandSecondary": "#A38346",
+      "onBrandSecondary": "#FFFFFF",
+      "brandTertiary": "#F7F2E6",
+      "onBrandTertiary": "#C5A059",
+      "accent": "#1A8663",
+      "onAccent": "#FFFFFF",
+      "accentSoft": "#E1F2EC",
+      "onAccentSoft": "#136047",
+      "success": "#10B981",
+      "onSuccess": "#FFFFFF",
+      "warning": "#F59E0B",
+      "onWarning": "#FFFFFF",
+      "error": "#EF4444",
+      "onError": "#FFFFFF",
+      "info": "#3B82F6",
+      "onInfo": "#FFFFFF",
+      "border": "#E4E6EB",
+      "borderStrong": "#C9CDD6",
+      "divider": "#F0F1F5",
+      "muted": "#6B7280",
+      "overlay": "rgba(0,0,0,0.5)",
+      "pro": "#C5A059",
+      "onPro": "#FFFFFF",
+      "headerDeep": "#021041",
+      "onHeaderDeep": "#FFFFFF"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Cairo",
+    "textFontFamily": "Cairo",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Maintain generous layout paddings. Do not cramp elements. Keep touch targets at least 44pt.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "pill": 999
+  },
+  "shadow_tier": 2,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use blur on the bottom floating pill tab bar.",
+      "Use frosted glass on sticky header backgrounds.",
+      "Apply translucent layers over deep backgrounds for elevated elements like VIP upsells."
+    ],
+    "dont's": [
+      "Never blur body text or dense data rows.",
+      "Do not use glass effects on basic input fields.",
+      "Avoid stacking multiple glass surfaces on top of each other."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Login",
+      "purpose": "Secure authentication gate with phone/SMS and password options.",
+      "states": {
+        "loading": "Centered sleek brand spinner over frosted background.",
+        "empty": "N/A",
+        "error": "Bottom sheet toast with red error text."
+      },
+      "layout": "Hero area with the large Navy logo (#021041) sitting over a subtle abstract background. Minimalist inputs for Phone and Password with thin borders that light up in `brandPrimary` (Gold) on focus. A segmented control or tab selector to switch between 'Password' and 'SMS OTP'. The primary CTA is a pill-shaped gold button sitting just above the safe area."
+    },
+    {
+      "name": "Home Dashboard",
+      "purpose": "High-level KPI overview for business owners and managers.",
+      "states": {
+        "loading": "Skeleton grids for the KPI cards.",
+        "empty": "N/A",
+        "error": "Error banner prompting a data refresh."
+      },
+      "layout": "Top portion uses `headerDeep` strip fading into the dark surface. A 2-col grid displays core KPIs (Revenue, Debts, Collections) utilizing `surfaceSecondary` cards with `pro` (gold) or `accent` (emerald) tinted icons. An interactive, smooth line chart sits underneath the KPI blocks for cashflow visualization."
+    },
+    {
+      "name": "Products",
+      "purpose": "View and manage inventory stock.",
+      "states": {
+        "loading": "List of skeleton rows.",
+        "empty": "Illustration of an empty box with a prompt to 'Add first product'.",
+        "error": "Readable retry state."
+      },
+      "layout": "Sticky glass header with a search bar and horizontal scrolling filter chips (`brandTertiary` background when selected). A vertical list of products using high-contrast `surfaceSecondary` cards. Each card includes an image thumbnail (with gradient scrim if needed) and a stock status badge."
+    },
+    {
+      "name": "Customers & Debts",
+      "purpose": "Track clients and outstanding payments.",
+      "states": {
+        "loading": "List of skeleton rows.",
+        "empty": "Illustration of a client list.",
+        "error": "Retry prompt."
+      },
+      "layout": "Searchable list with initials avatars or client logos. Outstanding debts are distinctly highlighted in `error` or `warning` text. Each list item has a quick action to log a collection."
+    },
+    {
+      "name": "New Sale (Invoice)",
+      "purpose": "Fast, POS-like invoice creation flow.",
+      "states": {
+        "loading": "Spinner during save.",
+        "empty": "Prompt to 'Select a product to start invoice'.",
+        "error": "Alert for network failures."
+      },
+      "layout": "Large 'Add Product' button. A clean summary section docked above the tab bar showing total amounts, tax, and a big 'Confirm Sale' CTA. Uses absolute bottom sheet patterns for product picking to stay in-context."
+    },
+    {
+      "name": "Subscription/Pro Upsell",
+      "purpose": "Drive conversions to Pro/VIP plans.",
+      "states": {
+        "loading": "Overlay spinner while fetching plans.",
+        "empty": "N/A",
+        "error": "Toast message for connection error."
+      },
+      "layout": "A cinematic, immersive screen using a dark abstract luxury background. Centered VIP imagery/iconography with gold `pro` accents. A checklist of premium features, followed by a wide, glowing gold CTA button."
+    }
+  ],
+  "images": {
+    "login_hero_bg": {
+      "url": "https://images.unsplash.com/photo-1585314062340-f1a5a7c9328d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwxfHxwcmVtaXVtJTIwZGFyayUyMGx1eHVyeSUyMHRleHR1cmUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc5MzY1Nzc3M3ww&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1585314062340-f1a5a7c9328d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzR8MHwxfHNlYXJjaHwxfHxwcmVtaXVtJTIwZGFyayUyMGx1eHVyeSUyMHRleHR1cmUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc5MzY1Nzc3M3ww&ixlib=rb-4.1.0&q=85",
+      "alt": "Dark textured luxury background"
+    },
+    "vip_subscription_bg": {
+      "url": "https://images.unsplash.com/photo-1667832273606-c4a9e46c7d1a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxnb2xkJTIwVklQJTIwc3Vic2NyaXB0aW9uJTIwcHJlbWl1bSUyMGFic3RyYWN0fGVufDB8fHx8MTc5MzY1Nzc3M3ww&ixlib=rb-4.1.0&q=85",
+      "dark": "https://images.unsplash.com/photo-1667832273606-c4a9e46c7d1a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzV8MHwxfHNlYXJjaHwxfHxnb2xkJTIwVklQJTIwc3Vic2NyaXB0aW9uJTIwcHJlbWl1bSUyMGFic3RyYWN0fGVufDB8fHx8MTc5MzY1Nzc3M3ww&ixlib=rb-4.1.0&q=85",
+      "alt": "Gold VIP premium abstract curve"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly adhere to the 'Dark Premium' default requested by the user. Ensure the UI feels like a high-end luxury app (deep charcoal backgrounds, subtle gold/champagne accents, and glassmorphism) rather than a generic SaaS.",
+    "The App is an Arabic RTL app. Ensure that text alignments default to right, chevrons point left, and `I18nManager.forceRTL(true)` is respected across all row layouts.",
+    "Implement the navigation bar as a 'floating pill'. It should hover slightly above the safe area bottom inset and utilize `expo-blur` to achieve a frosted glass effect.",
+    "The existing Navy logo (#021041) stays. In the dark theme, make sure it is placed in environments where it is visible, perhaps by introducing a subtle glow or utilizing the `headerDeep` strip.",
+    "Follow the specific color token dictionary precisely; the exact keys have been explicitly provided as constraints.",
+    "In the Login Screen, provide a toggle mechanism between SMS code and Password inputs without creating visual clutter.",
+    "Limit fonts to 'Cairo' globally, with weights capped at 500 max. Do NOT use bold variants."
+  ]
+}

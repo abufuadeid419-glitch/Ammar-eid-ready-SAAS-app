@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only test of Expo web preview (390x844 + 375x667) with token injection (owner, agent, acct). PASS: toast layering (toast-message rendered above bottom Sheet for product & customer forms, migrates to nested Select picker modal when opened, and falls back to root host when sheet closes); Arabic-Indic + Persian digit normalization on login-phone-input (٠٩٤٧١٢٣٤٥٦ -> 0947123456, continue button enables), login-country-code-input (٩٦٦ -> +966), Field inputs (product price ١٢٫٥ -> 12.5, ppp, stock ۱۰۰ -> 100, customer phone), customer-search-input & list-search-input; theme-quick-toggle present in Header of all owner tabs (home/customers/products/more) and all distributor tabs (home/customers/sale/sales/ops), icon toggles sunny<->moon, theme_pref persists after reload in both directions; login terms/privacy links navigate to /legal; dark login matches reference (hero photo, logo, title, 3 pills, dark card, gold-bordered Pro card, gold CTA, terms). Accountant tabs could not be reached (test_token_acct forced to set-password step; not submitted to avoid mutating shared data) but they use the same Header component. FAILURES: (1) Light-theme login hero title/subtitle illegible; (2) PasswordField does not normalize Arabic digits -> 'contains a number' rule fails and password login would mismatch.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Login hero (light theme)", "issue": "In light theme the hero title 'النظام الذكي' and subtitle use colors.onSurface / onSurfaceSecondary (dark text) over the photo with a dark rgba(0,0,0,0.5) overlay -> nearly invisible. Visible on login phone step and set-password step when theme_pref=light. Reference: /app/frontend/app/login.tsx:60,74-75", "testID": "login-hero", "priority": "HIGH"},
+      {"component": "PasswordField (Arabic digits)", "issue": "PasswordField onChangeText is not passed through toLatinDigits. Typing 'abcdefg١٢' keeps Arabic digits, rule /\\d/ ('تحتوي على رقم') stays unmet and login-set-password-submit stays disabled. Same for login-password-input: a password typed with Arabic-keyboard digits won't match one set with Latin digits. Reference: /app/frontend/src/components/PasswordField.tsx:18,42", "testID": "login-new-password-input", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Field inputs", "issues": ["Field converts digits in ALL text fields, free-text ones too (e.g. customer name 'محل ٣' becomes 'محل 3', addresses, reasons). If that's not intended, only convert when keyboardType is numeric/decimal/phone. Reference: src/ui.tsx:213", "On web, typing an Arabic digit into a field that already has text moves the caret to the end, because the value is rewritten (e.g. product-ppp-input default '1' + typed '٢٤' gave '214'). Minor."]},
+      {"screen": "Toast", "issues": ["The top toast covers the header (title and theme toggle) for about 4s. Acceptable, just a note."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [".screenshots/ (browser automation screenshots)"],
+  "action_items": [
+    "login.tsx Hero: use fixed light text colours (e.g. #FFFFFF / rgba(255,255,255,0.8)) for the hero title, subtitle and feature pills, since the hero overlay is always dark. Or use a light overlay in light theme.",
+    "PasswordField: wrap onChangeText with toLatinDigits (and/or make the rule regex [0-9\\u0660-\\u0669\\u06F0-\\u06F9]) so Arabic/Persian digit passwords normalize the same way at set-password and login.",
+    "Optional: limit Field digit conversion to numeric keyboardTypes, or keep it and accept free-text conversion."
+  ],
+  "critical_code_review_comments": [
+    "Toast layer stack (useOverlayLayer + AppModal mounting ToastHost) is a sound fix. All Modal usages go through AppModal (only raw <Modal> is inside AppModal itself).",
+    "No deprecated expo-av / expo-barcode-scanner / expo-background-fetch found in package.json. No SafeAreaView imported from react-native.",
+    "HeaderIconBtn is 36x36 with hitSlop 6, so the effective touch area is 48pt. OK."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "90%"},
+  "seed_data_creation": "None. No data created (all save attempts were validation failures).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Splash screen shows for about 3-5s after load even when login-phone-input already exists in the DOM; wait about 6s before taking screenshots. Owner customers are view-only (no add-customer-button); use test_token_agent at /dist/customers for the customer sheet. Products add sheet: /owner/products add-product-button, then save-product-button with empty name gives an error toast. Theme pref key: localStorage 'theme_pref' (JSON string). test_token_acct always lands on the set-password step.",
+  "rca_of_issue": "Light-theme hero: LinearGradient overlay colours are dark in both themes (overlay rgba(0,0,0,0.5/0.7)), but the text colours are theme-dependent (onSurface is dark in light theme), so contrast collapses."
+}
