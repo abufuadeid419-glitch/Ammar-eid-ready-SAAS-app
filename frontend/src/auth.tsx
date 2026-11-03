@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 
 import { api, setToken, setUnauthorizedHandler } from "@/src/api";
 import { deviceLabel, devicePlatform } from "@/src/device";
+import { setNumberOwner } from "@/src/docNumbers";
 import { clearOffline, startSyncLoop } from "@/src/offline";
 import { queryClient } from "@/src/query-client";
 import { storage } from "@/src/utils/storage";
@@ -49,6 +50,10 @@ export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = useState<User | null | undefined>(undefined);
+  // Reserved document-number pool follows the signed-in user (per org + user + device).
+  useEffect(() => {
+    if (user !== undefined) setNumberOwner(user);
+  }, [user]);
   const [token, setTokenState] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

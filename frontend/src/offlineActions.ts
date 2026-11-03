@@ -1,11 +1,11 @@
 // Write actions that work offline: applied to the local cache immediately,
 // then queued and synced to the server (idempotent by client-generated id).
+import { takeDocNumber } from "@/src/docNumbers";
 import { getLastCoords } from "@/src/location";
 import { enqueue, readCache, uid, updateCached } from "@/src/offline";
 import { queryClient } from "@/src/query-client";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const tempNo = (prefix: string, id: string) => `${prefix}-مؤقت-${id.slice(-4).toUpperCase()}`;
 
 const geo = () => {
   const c = getLastCoords();
@@ -37,9 +37,10 @@ export async function offlineSale(p: { customer: any; lines: SaleLine[]; paid: n
   const total = r2(subtotal - discount);
   const paid = Math.min(p.paid ?? total, total);
   const remaining = r2(total - paid);
-  const body = { id, customer_id: p.customer.id, items: items.map(({ product_id, quantity, unit }) => ({ product_id, quantity, unit: unit ?? "PIECE" })), paid_amount: paid, notes: p.notes, discount_type: dt, discount_value: dv, ...geo() };
+  const doc_no = await takeDocNumber("sale");
+  const body = { id, doc_no, customer_id: p.customer.id, items: items.map(({ product_id, quantity, unit }) => ({ product_id, quantity, unit: unit ?? "PIECE" })), paid_amount: paid, notes: p.notes, discount_type: dt, discount_value: dv, ...geo() };
   const doc = {
-    id, pending: true, invoice_no: tempNo("INV", id), customer_id: p.customer.id, customer_name: p.customer.name,
+    id, pending: true, invoice_no: doc_no, customer_id: p.customer.id, customer_name: p.customer.name,
     distributor_name: p.userName, items, subtotal, discount_type: discount ? dt : "NONE", discount_value: discount ? dv : 0, discount_amount: discount, total, paid_amount: paid, remaining,
     payment_type: paid >= total ? "CASH" : "CREDIT", notes: p.notes, created_at: new Date().toISOString(),
   };
@@ -59,8 +60,9 @@ export async function offlineCollection(p: { customer: any; amount: number; note
   const id = uid();
   const cur = p.currency === "USD" ? "USD" : "SYP";
   const base = cur === "USD" && (p.rate ?? 0) > 0 ? r2(p.amount * (p.rate as number)) : r2(p.amount);
-  const body = { id, customer_id: p.customer.id, amount: p.amount, currency: cur, notes: p.notes, ...geo() };
-  const doc = { id, pending: true, receipt_no: tempNo("RCV", id), customer_id: p.customer.id, customer_name: p.customer.name, amount: base, amount_input: r2(p.amount), input_currency: cur, exchange_rate: p.rate ?? 0, notes: p.notes, collector_name: p.userName, created_at: new Date().toISOString() };
+  const doc_no = await takeDocNumber("col");
+  const body = { id, doc_no, customer_id: p.customer.id, amount: p.amount, currency: cur, notes: p.notes, ...geo() };
+  const doc = { id, pending: true, receipt_no: doc_no, customer_id: p.customer.id, customer_name: p.customer.name, amount: base, amount_input: r2(p.amount), input_currency: cur, exchange_rate: p.rate ?? 0, notes: p.notes, collector_name: p.userName, created_at: new Date().toISOString() };
   await updateCached<any[]>("/customers", (cs) => cs.map((c) => (c.id === p.customer.id ? { ...c, balance: r2(c.balance - base) } : c)));
   await updateCached<any[]>("/collections", (s) => [doc, ...s]);
   await enqueue({ id, path: "/collections", body, label: `تحصيل · ${p.customer.name} · ${base}` });
@@ -76,8 +78,9 @@ export async function offlineReturn(p: { customer: any; line: Line; reason: stri
   const left = await returnableLocal(p.customer.id, p.line.product_id);
   if (left <= 0) throw new Error(`لا يمكن إرجاع "${p.line.product_name}": لا توجد كمية مباعة قابلة للإرجاع لهذا العميل`);
   if (pieces > left + 1e-9) throw new Error(`كمية الإرجاع تتجاوز المباع — المتبقي القابل للإرجاع ${r2(left)} قطعة`);
-  const body = { id, customer_id: p.customer.id, items: [{ product_id: p.line.product_id, quantity: p.line.quantity, price: p.line.price, unit: p.line.unit ?? "PIECE" }], reason: p.reason, ...geo() };
-  const doc = { id, pending: true, return_no: tempNo("RET", id), customer_id: p.customer.id, customer_name: p.customer.name, distributor_name: p.userName, items: [{ ...p.line, total }], total, reason: p.reason, created_at: new Date().toISOString() };
+  const doc_no = await takeDocNumber("ret");
+  const body = { id, doc_no, customer_id: p.customer.id, items: [{ product_id: p.line.product_id, quantity: p.line.quantity, price: p.line.price, unit: p.line.unit ?? "PIECE" }], reason: p.reason, ...geo() };
+  const doc = { id, pending: true, return_no: doc_no, customer_id: p.customer.id, customer_name: p.customer.name, distributor_name: p.userName, items: [{ ...p.line, total }], total, reason: p.reason, created_at: new Date().toISOString() };
   await updateCached<any[]>("/my/inventory", (inv) => {
     const found = inv.find((i) => i.product_id === p.line.product_id);
     if (found) return inv.map((i) => (i.product_id === p.line.product_id ? { ...i, quantity: r2(i.quantity + pieces) } : i));
@@ -102,8 +105,9 @@ export async function offlinePayment(p: { customer: any; amount: number; notes: 
   const id = uid();
   const cur = p.currency === "USD" ? "USD" : "SYP";
   const base = cur === "USD" && (p.rate ?? 0) > 0 ? r2(p.amount * (p.rate as number)) : r2(p.amount);
-  const body = { id, customer_id: p.customer.id, amount: p.amount, currency: cur, notes: p.notes, ...geo() };
-  const doc = { id, pending: true, voucher_no: tempNo("PAY", id), customer_id: p.customer.id, customer_name: p.customer.name, amount: base, amount_input: r2(p.amount), input_currency: cur, exchange_rate: p.rate ?? 0, notes: p.notes, distributor_name: p.userName, created_at: new Date().toISOString() };
+  const doc_no = await takeDocNumber("pay");
+  const body = { id, doc_no, customer_id: p.customer.id, amount: p.amount, currency: cur, notes: p.notes, ...geo() };
+  const doc = { id, pending: true, voucher_no: doc_no, customer_id: p.customer.id, customer_name: p.customer.name, amount: base, amount_input: r2(p.amount), input_currency: cur, exchange_rate: p.rate ?? 0, notes: p.notes, distributor_name: p.userName, created_at: new Date().toISOString() };
   await updateCached<any[]>("/customers", (cs) => cs.map((c) => (c.id === p.customer.id ? { ...c, balance: r2(c.balance + base) } : c)));
   await updateCached<any[]>("/payment-vouchers", (s) => [doc, ...s]);
   await enqueue({ id, path: "/payment-vouchers", body, label: `سند صرف · ${p.customer.name} · ${base}` });
@@ -116,7 +120,8 @@ const pcs = (l: QtyLine) => l.pieces ?? l.quantity;
 // Distributor stock returned to the main warehouse (owner confirms receipt).
 export async function offlineWarehouseReturn(items: QtyLine[], notes: string, userName?: string) {
   const id = uid();
-  const doc = { id, pending: true, return_no: tempNo("WRT", id), items, notes, status: "PENDING", distributor_name: userName, created_at: new Date().toISOString() };
+  const doc_no = await takeDocNumber("wret");
+  const doc = { id, pending: true, return_no: doc_no, items, notes, status: "PENDING", distributor_name: userName, created_at: new Date().toISOString() };
   await updateCached<any[]>("/my/inventory", (inv) =>
     inv.map((i) => {
       const l = items.find((x) => x.product_id === i.product_id);
@@ -124,7 +129,7 @@ export async function offlineWarehouseReturn(items: QtyLine[], notes: string, us
     }),
   );
   await updateCached<any[]>("/warehouse-returns", (s) => [doc, ...s]);
-  await enqueue({ id, path: "/warehouse-returns", body: { id, items: items.map(({ product_id, quantity, unit }) => ({ product_id, quantity, unit: unit ?? "PIECE" })), notes }, label: `إرجاع للمستودع · ${items.length} صنف` });
+  await enqueue({ id, path: "/warehouse-returns", body: { id, doc_no, items: items.map(({ product_id, quantity, unit }) => ({ product_id, quantity, unit: unit ?? "PIECE" })), notes }, label: `إرجاع للمستودع · ${items.length} صنف` });
   return doc;
 }
 

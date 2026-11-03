@@ -1,0 +1,36 @@
+{
+  "summary": "Retested offline final document numbering. Backend: updated /app/backend/tests/test_doc_numbering.py to the new rules (block sizes 20/20/10/10/5; top-up only when outstanding < half a block). 12 passed, 1 skipped (the live sale-creating test is now opt-in via RUN_SALE_CREATE=1 so we stay within the 1-sale limit). Frontend offline E2E at 390x844, signed in as the distributor: the pool reserved sale block 374-393 while online. With page.context.set_offline(True), I created 1 credit sale for 1 piece of TEST_PROD_06c08830 to customer TEST_IDEMP_TEST_ef6d264373ec. The sheet showed the final number 'فاتورة INV-00374' straight away, with no 'مؤقت'. The note read 'محفوظة على الجهاز برقمها النهائي — ستُزامن عند الاتصال'. The pool's taken list was [374] and the queue item carried doc_no INV-00374. I then blocked Convex with page.route and reloaded, which simulates closing the app before it can sync: the pool and queue both persisted and the banner showed 1 pending operation. After unblocking and reloading, the queue drained in about 2.5s. GET /api/sales returned INV-00374 exactly once (id mw0k828gp1q177oq, total 1400, the same number shown offline). Stock went from 5 to 4. Resending the same id+doc_no via the API returned the same document, and stock stayed at 4, so there was no double deduction. Reusing INV-00374 with a different id was rejected with 400 'رقم المستند مستخدم مسبقاً'. The offline_failed list stayed empty. No 'تم حفظ الفاتورة' toast appeared after the sheet closed, and no toast covered the customer field. No deprecated Expo packages were checked or found in the scope reviewed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/numbers/reserve", "issue": "Old 50-number blocks from before the size change still exist (e.g. DEV_A sale 34-83 and 134-183, with 99 numbers outstanding). They don't break anything, but they hold big reserved ranges that could become gaps. Consider an owner-side cleanup/expiry for stale blocks of devices that stopped being used."},
+      {"endpoint": "allocDocNo (convex/lib.ts:140)", "issue": "A doc_no is validated against the user's blocks for that kind, not against the device_id. That's fine for correctness because ranges never overlap, but a number from device A's block would be accepted from device B of the same user."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "NewSale (after closing sale-done-sheet)", "issues": ["Tapping 'فاتورة جديدة' (sale-done-new-button) leaves the form scrolled down, so the reset customer field sits off-screen above. Scroll to the top after saving or closing the sheet."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_doc_numbering.py", "/app/test_reports/pytest/pytest_doc_numbering_it9.xml"],
+  "action_items": [
+    "Optional: scroll NewSale back to the top after save or when sale-done-new-button is tapped.",
+    "Optional (web only): two open tabs keep separate in-memory pools that read the same localStorage key, so both can hand out the same number. The second document is then rejected on sync with 'مستخدم مسبقاً'. Re-read the pool from storage inside takeDocNumber's mutex, or use a storage event or lock.",
+    "Product note: smaller blocks (sale 20, wret 5) mean a device that stays offline all day without topping up can run out. takeDocNumber then throws and the document can't be created offline. Check that this is acceptable for distributors' daily volumes."
+  ],
+  "critical_code_review_comments": [
+    "docNumbers.ts writes the pool to storage before it returns a number, and takes are serialized through a promise-chain mutex. This matched the behaviour I saw: the number survived the reload and was never reused.",
+    "refillNumbers merges server 'used' with locally taken unsynced numbers. It also runs after every sync (offline.ts:372), which closes the gap where the server counted unsynced numbers as outstanding.",
+    "A server-side rejection for another reason (e.g. stock) rolls back the mutation, so the number stays unused on the server but taken locally. The result is a gap, not a duplicate, which is the intended trade-off."
+  ],
+  "updated_files": ["/app/backend/tests/test_doc_numbering.py"],
+  "success_rate": {"backend": "100% (12/12 executed, 1 opt-in skipped)", "frontend": "100% (offline create, final number, persistence across reload, sync, exactly-once on the server, no toast overlay)"},
+  "seed_data_creation": "One sale reached the server: INV-00374 (id mw0k828gp1q177oq, 1 piece of TEST_PROD_06c08830, credit, TEST_IDEMP_TEST_ef6d264373ec). An earlier offline sale, INV-00354, was saved in a browser context that was destroyed before it could sync, so it never reached the server and left a gap at 354. Several reserve calls created blocks for fresh test devices (testfresh_*, plus two browser devices with sale blocks 354-373 and 374-393).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Each browser_automation call gets a fresh browser context: localStorage is wiped, which means a new device_id and new blocks. So an offline create→sync flow must run inside ONE script. To simulate an app restart while the server is unreachable, use page.route('**/*convex*/**', abort) plus reload; a reload with set_offline(True) can't load the bundle. The sale screen is /dist/sale. Its selects use select-search-input and select-option-N. Inventory endpoint: /api/my/inventory.",
+  "rca_of_issue": ""
+}

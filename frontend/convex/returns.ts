@@ -18,7 +18,7 @@ import {
   isAgent,
   logMovement,
   newId,
-  nextNo,
+  allocDocNo,
   notify,
   nowIso,
   orgCustomer,
@@ -54,6 +54,7 @@ export const createSales = mutation({
   args: {
     token: v.string(),
     id: v.optional(v.string()),
+    doc_no: v.optional(v.union(v.string(), v.null())),
     customer_id: v.string(),
     items: v.array(lineItem),
     reason: v.optional(v.string()),
@@ -111,7 +112,7 @@ export const createSales = mutation({
       id: a.id || newId(),
       ...geoFields(a),
       org_id: user.org_id!,
-      return_no: await nextNo(ctx, user.org_id!, "ret", "RET"),
+      return_no: await allocDocNo(ctx, user, "ret", a.doc_no),
       customer_id: cust.id,
       customer_name: cust.name,
       distributor_id: user.user_id,
@@ -133,7 +134,7 @@ export const listWarehouse = query({
 });
 
 export const createWarehouse = mutation({
-  args: { token: v.string(), id: v.optional(v.string()), items: v.array(qtyItem), notes: v.optional(v.string()) },
+  args: { token: v.string(), id: v.optional(v.string()), doc_no: v.optional(v.union(v.string(), v.null())), items: v.array(qtyItem), notes: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const user = await require(ctx, a.token, AGENT);
     if (a.id) {
@@ -156,7 +157,7 @@ export const createWarehouse = mutation({
     const doc = {
       id: a.id || newId(),
       org_id: user.org_id!,
-      return_no: await nextNo(ctx, user.org_id!, "wret", "WRT"),
+      return_no: await allocDocNo(ctx, user, "wret", a.doc_no),
       distributor_id: user.user_id,
       distributor_name: user.name ?? null,
       items,

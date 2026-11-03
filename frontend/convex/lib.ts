@@ -118,6 +118,11 @@ export const DEV = ["DEVELOPER"];
 export const isAgent = (user: any) => user.employee_type === "FIELD_AGENT";
 
 // ---- counters (mirror next_no) ----
+// Document kinds that can be created offline, with their number prefix and reservation block size.
+export const DOC_KINDS: Record<string, string> = { sale: "INV", col: "RCV", ret: "RET", pay: "PAY", wret: "WRT" };
+export const BLOCK_SIZE: Record<string, number> = { sale: 40, col: 40, ret: 10, pay: 10, wret: 5 };
+export const fmtDocNo = (prefix: string, n: number) => `${prefix}-${String(n).padStart(5, "0")}`;
+
 export async function nextNo(ctx: MutationCtx, org_id: string, kind: string, prefix: string) {
   const existing = await ctx.db
     .query("counters")
@@ -126,7 +131,27 @@ export async function nextNo(ctx: MutationCtx, org_id: string, kind: string, pre
   const n = (existing?.n ?? 0) + 1;
   if (existing) await ctx.db.patch(existing._id, { n });
   else await ctx.db.insert("counters", { org_id, kind, n });
-  return `${prefix}-${String(n).padStart(5, "0")}`;
+  return fmtDocNo(prefix, n);
+}
+
+// Number for a new document. A client-stamped number (from a reserved block) is validated and kept
+// exactly as-is; otherwise the next counter value is taken. Callers run this AFTER their id-idempotency
+// check, so a re-sent document returns the existing record and never consumes a number twice.
+export async function allocDocNo(ctx: MutationCtx, user: any, kind: string, docNo?: string | null) {
+  const prefix = DOC_KINDS[kind];
+  if (!docNo) return nextNo(ctx, user.org_id, kind, prefix);
+  const m = new RegExp(`^${prefix}-(\\d{5,9})$`).exec(docNo);
+  if (!m) throw new Error("رقم المستند غير صالح");
+  const n = Number(m[1]);
+  const blocks = await ctx.db
+    .query("number_blocks")
+    .withIndex("by_org_user_kind", (q: any) => q.eq("org_id", user.org_id).eq("user_id", user.user_id).eq("kind", kind))
+    .collect();
+  const b: any = blocks.find((x: any) => n >= x.start && n <= x.end);
+  if (!b) throw new Error("رقم المستند خارج النطاق المحجوز لهذا المستخدم");
+  if ((b.used ?? []).includes(n)) throw new Error("رقم المستند مستخدم مسبقاً");
+  await ctx.db.patch(b._id, { used: [...(b.used ?? []), n], last_used_at: nowIso() });
+  return docNo;
 }
 
 // ---- stock movement log (mirror log_movement) ----

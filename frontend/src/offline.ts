@@ -22,6 +22,7 @@ import NetInfo from "@react-native-community/netinfo";
 import { useEffect, useState } from "react";
 
 import { api } from "@/src/api";
+import { refillNumbers } from "@/src/docNumbers";
 import { queryClient } from "@/src/query-client";
 import { storage } from "@/src/utils/storage";
 
@@ -367,6 +368,8 @@ export async function syncQueue() {
   }
   // Refetch server truth after successes AND rejections (rejected items' optimistic balance/stock edits).
   if (anySuccess || anyFailed) queryClient.invalidateQueries();
+  // Top up reserved document numbers whenever we have been talking to the server.
+  refillNumbers();
   // Notify UI listeners of successful completion so they can toast the user.
   if (syncedCount > 0) completeListeners.forEach((f) => f(syncedCount));
 }
@@ -403,7 +406,10 @@ export function startSyncLoop() {
       online = next;
       notify();
     }
-    if (next) syncQueue();
+    if (next) {
+      syncQueue();
+      refillNumbers();
+    }
   });
   // Web: NetInfo may miss browser online/offline events — listen to them directly.
   const w: any = typeof window !== "undefined" ? window : null;
@@ -411,6 +417,7 @@ export function startSyncLoop() {
     online = true;
     notify();
     syncQueue();
+    refillNumbers();
   };
   const onWebOffline = () => {
     online = false;

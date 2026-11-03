@@ -416,6 +416,19 @@ export default defineSchema(
       n: v.optional(v.number()),
     }).index("by_org_kind", ["org_id", "kind"]),
 
+    // Pre-reserved document number ranges per user + device (see numbering.ts).
+    number_blocks: defineTable({
+      org_id: v.string(),
+      user_id: v.string(),
+      device_id: v.string(),
+      kind: v.string(),
+      start: v.number(),
+      end: v.number(),
+      used: v.optional(v.array(v.number())),
+      created_at: v.optional(v.string()),
+      last_used_at: v.optional(v.string()),
+    }).index("by_org_user_kind", ["org_id", "user_id", "kind"]),
+
     routes: defineTable({
       id: v.string(),
       org_id: v.string(),

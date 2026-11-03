@@ -28,6 +28,8 @@ const ROUTES: Route[] = [
   ["POST", "/auth/consent", "m", api.extra.consent, T],
   ["DELETE", "/auth/account", "m", api.extra.deleteAccount, T],
   ["POST", "/activate", "m", api.employees.activate, (c) => ({ token: c.token, code: c.b.code })],
+  ["POST", "/numbers/reserve", "m", api.numbering.reserve, (c) => ({ token: c.token, device_id: String(c.b.device_id ?? ""), kinds: Array.isArray(c.b.kinds) ? c.b.kinds.map(String) : [] })],
+  ["GET", "/numbers/blocks", "q", api.numbering.blocks, T],
   ["POST", "/trial", "m", api.employees.trial, (c) => ({ token: c.token, org_name: c.b.org_name })],
   // products
   ["GET", "/products", "q", api.products.list, T],

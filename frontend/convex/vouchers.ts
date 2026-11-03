@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import { mutation, query } from "./_generated/server";
-import { AGENT, ANY_ORG, clean, cleanAll, docOrgUnique, geoFields, isAgent, newId, nextNo, nowIso, orgCustomer, orgMoney, require, round2, toBase } from "./lib";
+import { AGENT, ANY_ORG, clean, cleanAll, docOrgUnique, geoFields, isAgent, allocDocNo, newId, nowIso, orgCustomer, orgMoney, require, round2, toBase } from "./lib";
 
 // GET /api/payment-vouchers (ANY_ORG; agents see only their own).
 export const list = query({
@@ -25,6 +25,7 @@ export const create = mutation({
   args: {
     token: v.string(),
     id: v.optional(v.string()),
+    doc_no: v.optional(v.union(v.string(), v.null())),
     customer_id: v.string(),
     amount: v.number(),
     notes: v.optional(v.string()),
@@ -51,7 +52,7 @@ export const create = mutation({
       id: a.id || newId(),
       ...geoFields(a),
       org_id: user.org_id!,
-      voucher_no: await nextNo(ctx, user.org_id!, "pay", "PAY"),
+      voucher_no: await allocDocNo(ctx, user, "pay", a.doc_no),
       customer_id: cust.id,
       customer_name: cust.name,
       amount: amountBase,

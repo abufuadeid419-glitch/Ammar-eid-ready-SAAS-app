@@ -61,7 +61,8 @@ export default function NewSale() {
   // server record (same id) so the real invoice number is what gets printed or sent.
   const sales = useApi<any[]>("/sales", !!last?.pending);
   const shown = (last?.pending && sales.data?.find((s) => s.id === last.id && !s.pending)) || last;
-  const invNo = (d: any) => (d.pending ? `\u2066${String(d.invoice_no).replace("مؤقت-", "")}\u2069 (مؤقت)` : `\u2066${d.invoice_no}\u2069`);
+  // Numbers are final from creation (reserved range), so the number never changes after sync.
+  const invNo = (d: any) => `\u2066${d.invoice_no}\u2069`;
 
   const addLine = (p: any) => {
     if (lines.find((l) => l.product_id === p.product_id)) return toast("المنتج مضاف مسبقاً", "error");
@@ -110,7 +111,7 @@ export default function NewSale() {
       setPaid("");
       setPayMode(null);
       setNotes("");
-      toast(online ? "تم حفظ الفاتورة" : "تم حفظ الفاتورة دون اتصال وستتم مزامنتها لاحقاً");
+      // The "تم حفظ الفاتورة" sheet confirms the save (and offline state) — no extra toast on top of it.
     } catch (e: any) {
       toast(e.message, "error");
     } finally {
@@ -256,7 +257,7 @@ export default function NewSale() {
                 <T v="h2" testID="sale-done-invoice-no">فاتورة {invNo(shown)}</T>
                 {shown.pending && (
                   <T v="caption" color="warning" testID="sale-done-pending">
-                    {online ? "جارٍ المزامنة… سيظهر رقم الفاتورة النهائي خلال لحظات" : "بانتظار الاتصال — الرقم مؤقت حتى المزامنة"}
+                    {online ? "جارٍ المزامنة… رقم الفاتورة نهائي ولن يتغير" : "محفوظة على الجهاز برقمها النهائي — ستُزامن عند الاتصال"}
                   </T>
                 )}
                 <T v="caption">{shown.customer_name}</T>
