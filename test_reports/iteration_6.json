@@ -1,0 +1,29 @@
+{
+  "summary": "Backend-only retest of the iteration 5 expiry-reminder fixes on Convex fearless-ostrich-878. Nothing was written to live data and no SMS was sent. function-spec confirms the deploy: billing:expiryReminderBatch is an internal Query with no args, markExpiryReminded is an internal Mutation (org, owner_id, key, title, body), and sendExpiryReminders is an internal Action. `npx convex run billing:expiryReminderBatch` returned []. Code review and a local unit run (node, with sendSms and ctx mocked) confirmed four things. (1) Each SMS is wrapped in try/catch, so one item that throws or returns ok:false does not stop the rest. (2) markExpiryReminded runs for every item after its send attempt, including items with no phone. (3) The return value is {total, sms}, where sms counts only successful sends. (4) reminder_days is clamped to an integer from 1 to 30, with NaN, undefined or a string falling back to 7. SUSPENDED orgs are skipped. expiry_reminders is now an optional string array in the organizations schema (schema.ts:78). The SMS text is 'النظام الذكي: <when>. جدّد: ${CONVEX_SITE_URL}/renew', which is 91-102 chars, or 2 UCS-2 segments (down from about 3). The stale duplicate comment was removed. Regression: GET /renew 200, /api/plans 200, /api/auth/me 200, /api/auth/me without a token 401. 9/9 pytest passed and 12/12 node unit checks passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "billing:sendExpiryReminders", "issue": "By design, a key is marked as sent even when the SMS fails or throws, so a failed SMS is never retried. The in-app notification is still delivered and the failure is only logged with console.error. Acceptable, but there is no retry."},
+      {"endpoint": "billing:sendExpiryReminders", "issue": "runMutation(markExpiryReminded) is not inside the try/catch. If it throws for one org, the loop stops and the remaining orgs are skipped until the next day's run. If that run has moved to a different stage, the skipped stage is lost."},
+      {"endpoint": "billing:billingSettings", "issue": "reminder_days=0 maps to 7, not 1, because `Math.round(0) || 7` treats 0 as missing. devSettingsSave also stores the raw value, so the clamp is only applied when the setting is read. Harmless."},
+      {"endpoint": "SMS text", "issue": "The text is still 2 SMS segments because the renew URL alone is 51 chars. A shorter domain or link would bring it down to 1 segment. Optional."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": ["/app/backend/tests/test_expiry_reminders.py", "/app/backend/tests/expiry_stage_unit.js", "/app/test_reports/pytest/pytest_results_iter6.xml"],
+  "action_items": [
+    "Optional: move the markExpiryReminded runMutation inside a per-item try/catch so one failing org cannot abort the batch.",
+    "Optional: let reminder_days=0 clamp to 1 (or reject it), and clamp the value at write time in devSettingsSave."
+  ],
+  "critical_code_review_comments": [
+    "The query/mutation/action split is correct: reads happen in an internalQuery, the SMS is sent from the action, and the notification and key are saved in a per-org internalMutation that dedups again with includes(key), so it is idempotent.",
+    "expiry_reminders is trimmed to the last 11 keys, so it cannot grow without limit.",
+    "billing.ts is 714 lines, just over the 700-line guideline. Consider splitting the expiry reminders into their own module."
+  ],
+  "updated_files": ["/app/backend/tests/test_expiry_reminders.py", "/app/backend/tests/expiry_stage_unit.js"],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Live Convex deployment shared with production. billing:expiryReminderBatch is a read-only internalQuery with no args and is safe to run. NEVER run sendExpiryReminders or markExpiryReminded on live. Export CONVEX_DEPLOY_KEY from /app/backend/.env before running npx convex from /app/frontend. Run: pytest /app/backend/tests/test_expiry_reminders.py, which also runs the node unit checks in expiry_stage_unit.js."
+}

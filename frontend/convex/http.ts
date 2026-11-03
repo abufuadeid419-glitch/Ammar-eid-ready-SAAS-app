@@ -250,6 +250,23 @@ const handler = httpAction(async (ctx, request) => {
 });
 
 const http = httpRouter();
+
+// Renew link sent in SMS expiry reminders: a tiny page that opens the app's plans screen.
+// SMS apps only linkify http(s), so this https page hands off to the smartsystem:// scheme.
+const RENEW_HTML = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تجديد الاشتراك — النظام الذكي</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#090A0C;color:#F2F2F2;font-family:system-ui,sans-serif;text-align:center}
+.c{padding:32px;max-width:360px}h1{font-size:22px;margin:0 0 8px}p{color:#A0A0A0;line-height:1.7}
+a{display:inline-block;margin-top:16px;padding:14px 28px;border-radius:999px;background:#D4AF37;color:#090A0C;font-weight:700;text-decoration:none}</style></head>
+<body><div class="c"><h1>تجديد اشتراكك</h1><p>افتح تطبيق النظام الذكي لاختيار خطتك وإكمال التجديد.</p>
+<a id="open" href="smartsystem://upgrade">فتح صفحة الخطط</a>
+<p style="font-size:13px">إذا لم يُفتح التطبيق، افتحه يدوياً ثم اذهب إلى: الإعدادات ← الخطط.</p></div>
+<script>setTimeout(function(){location.href="smartsystem://upgrade"},300)</script></body></html>`;
+http.route({
+  path: "/renew",
+  method: "GET",
+  handler: httpAction(async () => new Response(RENEW_HTML, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } })),
+});
 for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
   http.route({ pathPrefix: "/api/", method, handler });
   http.route({ path: "/api", method, handler });

@@ -1,0 +1,35 @@
+{
+  "summary": "Backend-only test of Plan Expiry Reminders (Convex fearless-ostrich-878). GET /renew returns 200 text/html; charset=utf-8, Cache-Control no-store, RTL Arabic page with href and auto-redirect to smartsystem://upgrade (scheme matches app.json, app/upgrade.tsx exists). `npx convex run billing:expiryReminderBatch {dryRun:true}` ran with no error and returned [] (no live writes). `npx convex function-spec` shows billing:expiryReminderBatch as an internal Mutation and billing:sendExpiryReminders as an internal Action, so the deploy worked. crons.ts schedules it daily at 08:30 UTC. Regression: /api/auth/me and /api/plans return 200 with test_token_owner, and /api/auth/me returns 401 without a token. 7/7 pytest passed. A local unit check of expiryReminderPlan confirmed stages 7/3/1 and expiry (left 0 or -1 both map to one deduped key '0'), dedup by `${expires_at}:${stage}`, a reset after renewal (new expires_at), and that TRIAL orgs and orgs with no owner are skipped. A few robustness issues were found (below). sendSms was never called.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "billing.sendExpiryReminders", "issue": "The batch mutation saves the dedup keys BEFORE any SMS is sent. The action loop has no try/catch around sendSms (fetch can throw on network/gateway errors), so one exception stops the loop, the remaining owners get no SMS, and they are never retried because their keys are already saved. Failed sends (r.ok false) are also never retried."},
+      {"endpoint": "billing.devSettingsSave (reminder_days)", "issue": "reminder_days is not validated or clamped. A fractional value (e.g. 5.5) never matches the integer `left`, so that stage silently never fires. 0 or negative values do nothing. Suggest Math.round and clamp to 1..30."},
+      {"endpoint": "billing.expiryReminderPlan timing", "issue": "Math.ceil plus a fixed 08:30 UTC cron means the '1 day left' SMS can go out only minutes or hours before expiry (expires_at is activation time + N days). The 'expired' SMS can then arrive up to ~24h after expiry. This is acceptable, but the text 'متبقٍ يوم واحد' (one day left) can be misleading."},
+      {"endpoint": "billing.expiryReminderPlan", "issue": "Org status is not checked. SUSPENDED or disabled LICENSE orgs still get reminders. The trial reminder code checks status === 'ACTIVE'. Confirm whether this is intended."},
+      {"endpoint": "schema.ts organizations", "issue": "expiry_reminders is not declared in the schema. It only works because schemaValidation is false and the patch uses `as any`. Add v.optional(v.array(v.string()))."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": ["/app/backend/tests/test_expiry_reminders.py", "/app/backend/tests/expiry_stage_unit.js", "/app/test_reports/pytest/pytest_expiry.xml"],
+  "action_items": [
+    "Wrap sendSms in try/catch inside sendExpiryReminders. Better: mark a key as sent only after the SMS succeeds (e.g. a second internalMutation per org), or record failures for retry.",
+    "Validate and clamp reminder_days in devSettingsSave (integer, 1..30).",
+    "Add expiry_reminders to the organizations schema.",
+    "Decide whether non-ACTIVE (SUSPENDED) orgs should get expiry reminders.",
+    "Remove the stale duplicate comment at billing.ts:647.",
+    "Optional: the Arabic SMS with the URL is ~150 chars, so about 3 UCS-2 segments per message. Consider shortening it for cost."
+  ],
+  "critical_code_review_comments": [
+    "billing.ts is ~696 lines, close to the 700-line split threshold.",
+    "expiryReminderBatch scans the whole organizations table with collect() inside one mutation. Fine at current scale; filtering by plan/an index would scale better.",
+    "Phone regex /^\\+[1-9]\\d{7,14}$/ correctly checks E.164; in-app notify still fires when there is no valid phone."
+  ],
+  "updated_files": ["/app/backend/tests/test_expiry_reminders.py", "/app/backend/tests/expiry_stage_unit.js"],
+  "success_rate": {"backend": "100% (7/7 pytest + dry-run + function-spec)", "frontend": "N/A"},
+  "seed_data_creation": "None. Read-only; dryRun only; no SMS sent; sendExpiryReminders not invoked.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Live production-shared Convex deployment. Only ever run billing:expiryReminderBatch with {\"dryRun\": true}. Export CONVEX_DEPLOY_KEY from /app/backend/.env before running npx convex from /app/frontend. Run: pytest /app/backend/tests/test_expiry_reminders.py; node /app/backend/tests/expiry_stage_unit.js",
+  "rca_of_issue": ""
+}

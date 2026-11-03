@@ -2,8 +2,9 @@
 // owner payment requests with private receipts, developer verification and atomic activation.
 import { v } from "convex/values";
 
-import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { sendSms } from "./edge";
 import {
   DEV, MODULES, OWNER, PLAN_FIELDS, PLAN_TIERS, audit, clean, cleanAll, cleanModules, getUser, isExpired, isPro, newId, notify, nowIso,
   orgById, orgLimits, periodPrice, pubOf, require, snapshotPlan,
@@ -20,7 +21,7 @@ async function billingSettings(ctx: any) {
     max_receipt_mb: Math.min(Math.max(Number(d.max_receipt_mb ?? 4), 1), MAX_RECEIPT_CAP_MB),
     allow_resubmit: d.allow_resubmit !== false,
     max_requests_per_day: Math.max(Number(d.max_requests_per_day ?? 5), 1),
-    reminder_days: Number(d.reminder_days ?? 7),
+    reminder_days: Math.min(Math.max(Math.round(Number(d.reminder_days ?? 7)) || 7, 1), 30),
   };
 }
 
@@ -643,17 +644,71 @@ export const devStats = query({
   },
 });
 
-// Cron: subscription expiry reminders (N days before, 1 day before, on expiry).
-export const sendExpiryReminders = internalMutation({
+// Paid subscription expiry reminders: in-app notification + SMS to the owner with a renew link,
+// at `reminder_days` (billing settings, default 7), 3 days, 1 day and on expiry — each once per expiry date.
+function expiryReminderPlan(o: any, reminderDays: number) {
+  if (o.plan !== "LICENSE" || !o.expires_at || !o.owner_id || o.status === "SUSPENDED") return null;
+  const left = Math.ceil((Date.parse(o.expires_at) - Date.now()) / 86400000);
+  const stage = left <= 0 ? (left > -2 ? "0" : null) : [reminderDays, 3, 1].includes(left) ? String(left) : null;
+  if (!stage) return null;
+  const key = `${o.expires_at}:${stage}`;
+  if ((o.expiry_reminders ?? []).includes(key)) return null;
+  return { left, stage, key };
+}
+
+const renewLink = () => `${process.env.CONVEX_SITE_URL}/renew`;
+
+type ExpiryItem = { org: string; owner_id: string; key: string; title: string; body: string; phone: string | null; text: string };
+
+// Read-only: who is due a reminder today (also used for dry runs).
+export const expiryReminderBatch = internalQuery({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<ExpiryItem[]> => {
     const st = await billingSettings(ctx);
-    const day = 86400000;
+    const out: ExpiryItem[] = [];
     for (const o of (await ctx.db.query("organizations").collect()) as any[]) {
-      if (o.plan !== "LICENSE" || !o.expires_at || !o.owner_id) continue;
-      const left = Math.ceil((Date.parse(o.expires_at) - Date.now()) / day);
-      if (left === st.reminder_days || left === 1) await notify(ctx, [o.owner_id], "upgrade", "اشتراكك يقترب من الانتهاء", `متبقٍ ${left} يوم على ${o.plan_name ?? "خطتك"} — جدّد من صفحة الخطط`);
-      else if (left === 0) await notify(ctx, [o.owner_id], "upgrade", "انتهى اشتراكك", o.grace_until ? "لديك فترة سماح قصيرة، جدّد الآن لتجنب إيقاف الميزات" : "جدّد اشتراكك لاستعادة الميزات");
+      const r = expiryReminderPlan(o, st.reminder_days);
+      if (!r) continue;
+      const plan = o.plan_name ?? "خطتك";
+      const title = r.stage === "0" ? "انتهى اشتراكك" : "اشتراكك يقترب من الانتهاء";
+      const body =
+        r.stage === "0"
+          ? o.grace_until ? "لديك فترة سماح قصيرة، جدّد الآن لتجنب إيقاف الميزات" : "جدّد اشتراكك لاستعادة الميزات"
+          : `متبقٍ ${r.left === 1 ? "يوم واحد" : `${r.left} أيام`} على ${plan} — جدّد من صفحة الخطط`;
+      const owner = await ctx.db.query("users").withIndex("by_user_id", (q: any) => q.eq("user_id", o.owner_id)).first();
+      const phone = owner?.phone && /^\+[1-9]\d{7,14}$/.test(owner.phone) ? owner.phone : null;
+      const when = r.stage === "0" ? "انتهى اشتراكك" : `يتبقى ${r.left === 1 ? "يوم" : `${r.left} أيام`} على اشتراكك`;
+      out.push({ org: o.id, owner_id: o.owner_id, key: r.key, title, body, phone, text: `النظام الذكي: ${when}. جدّد: ${renewLink()}` });
     }
+    return out;
+  },
+});
+
+// After the SMS attempt: in-app notification + remember the stage so it is never repeated.
+export const markExpiryReminded = internalMutation({
+  args: { org: v.string(), owner_id: v.string(), key: v.string(), title: v.string(), body: v.string() },
+  handler: async (ctx, a) => {
+    const o: any = await orgById(ctx, a.org);
+    if (!o || (o.expiry_reminders ?? []).includes(a.key)) return;
+    await notify(ctx, [a.owner_id], "upgrade", a.title, a.body);
+    await ctx.db.patch(o._id, { expiry_reminders: [...(o.expiry_reminders ?? []).slice(-10), a.key] });
+  },
+});
+
+export const sendExpiryReminders = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ total: number; sms: number }> => {
+    const list: ExpiryItem[] = await ctx.runQuery(internal.billing.expiryReminderBatch, {});
+    let sms = 0;
+    for (const s of list) {
+      // One failing send never stops the rest; the in-app notification is still delivered.
+      try {
+        if (s.phone && (await sendSms(s.phone, s.text)).ok) sms++;
+        await ctx.runMutation(internal.billing.markExpiryReminded, { org: s.org, owner_id: s.owner_id, key: s.key, title: s.title, body: s.body });
+      } catch (e) {
+        console.error("expiry reminder failed", s.org, String(e));
+      }
+    }
+    return { total: list.length, sms };
   },
 });

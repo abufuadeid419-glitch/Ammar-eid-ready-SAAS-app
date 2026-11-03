@@ -19,3 +19,8 @@
 ## Backlog
 - Data: Pro plan promo price (199) > regular price (25) — developer should fix in plan editor.
 - P2: ProBanner "yearly is best value" copy should use the same check.
+
+## Iteration 2026-11 (c) — Plan expiry SMS reminders
+- convex/billing.ts: daily cron 08:30 UTC → sendExpiryReminders (action). Paid (LICENSE, not SUSPENDED) orgs get in-app + SMS to owner at reminder_days (1–30, default 7), 3, 1 days left and on expiry; once per expiry date (org.expiry_reminders keys). SMS includes renew link <CONVEX_SITE_URL>/renew.
+- convex/http.ts: GET /renew — Arabic dark page that opens smartsystem://upgrade (works in installed builds, not Expo Go).
+- Convex deployed with CONVEX_DEPLOY_KEY (backend secret). Tests: iterations 5–6 passed.

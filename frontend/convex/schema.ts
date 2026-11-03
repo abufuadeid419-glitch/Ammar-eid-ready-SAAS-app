@@ -75,6 +75,7 @@ export default defineSchema(
       max_customers: v.optional(v.union(v.number(), v.null())),
       plan_id: v.optional(v.string()),
       grace_until: v.optional(v.union(v.string(), v.null())),
+      expiry_reminders: v.optional(v.array(v.string())),
       max_employees: v.optional(v.number()),
       expires_at: v.optional(v.string()),
       created_at: v.optional(v.string()),
