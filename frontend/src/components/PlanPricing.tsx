@@ -7,6 +7,7 @@ import { useApi } from "@/src/hooks";
 import { isPro, priceFor, promoOn, tierLabel, usePro } from "@/src/pro";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Ionicons, Section, Segments, T } from "@/src/ui";
+import { UsageAlerts } from "@/src/components/UsageMeters";
 
 const lim = (n: any, unit: string) => (n == null ? `${unit} بلا حد` : `حتى ${n} ${unit}`);
 
@@ -37,6 +38,7 @@ export function PlanPricing() {
       action={<Btn testID="pricing-compare-button" small variant="ghost" title="مقارنة الخطط" style={{ minHeight: 44 }} onPress={() => router.push("/upgrade")} />}
     >
       <View testID="plan-pricing-card" style={{ gap: spacing.md }}>
+        <UsageAlerts />
         {hasYearly && (
           <View testID="pricing-billing-toggle" style={{ marginHorizontal: -spacing.lg }}>
             <Segments value={billing} onChange={setBilling} options={[{ key: "monthly", label: "شهري" }, { key: "yearly", label: yearlySaves ? "سنوي (الأوفر)" : "سنوي" }]} />

@@ -297,6 +297,8 @@ export const setName = mutation({
   args: { token: v.string(), name: v.string() },
   handler: async (ctx, { token, name }) => {
     const user: any = await getUser(ctx, token);
+    // Employee names are set by the owner only (invite / employees screen).
+    if (user.role === "EMPLOYEE" || user.name_locked) throw new Error("اسم الموظف يحدده المالك فقط");
     const n = name.trim();
     if (n.length < 2 || n.length > 60) throw new Error("أدخل اسماً صحيحاً");
     await ctx.db.patch(user._id, { name: n });

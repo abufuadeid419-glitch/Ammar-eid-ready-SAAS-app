@@ -18,6 +18,7 @@ export const PLAN_TIERS = ["FREE", "PRO", "VIP"];
 export const PLAN_FIELDS = [
   "name", "description", "tier", "price", "yearly_price", "promo_price", "promo_until", "currency", "days", "trial_days",
   "grace_days", "max_employees", "max_distributors", "max_customers", "modules", "features", "active", "recommended", "sort_order",
+  "limits", "org_ids",
 ];
 export const snapshotPlan = (p: any) => Object.fromEntries(PLAN_FIELDS.map((k) => [k, p[k] ?? null]));
 export const pubOf = (p: any) => {
@@ -33,10 +34,59 @@ export const periodPrice = (p: any, billing: string) => {
 };
 
 // Effective resource limits: the org's paid licence values, otherwise the published Free plan.
-export async function orgLimits(ctx: QueryCtx, org: any) {
-  if (isPro(org)) return { employees: org.max_employees ?? 0, distributors: org.max_distributors ?? null, customers: org.max_customers ?? null };
-  const free = (await ctx.db.query("plans").collect()).map(pubOf).find((p: any) => p?.tier === "FREE");
-  return { employees: free?.max_employees ?? 1, distributors: free?.max_distributors ?? null, customers: free?.max_customers ?? null };
+// `limits` holds the dynamic resources from the developer catalog (products, invoices_month, ...; null = unlimited).
+export async function orgLimits(ctx: QueryCtx, org: any): Promise<Record<string, number | null>> {
+  if (isPro(org)) return { ...(org.limits ?? {}), employees: org.max_employees ?? 0, distributors: org.max_distributors ?? null, customers: org.max_customers ?? null };
+  const free: any = (await ctx.db.query("plans").collect()).map(pubOf).find((p: any) => p?.tier === "FREE");
+  return { ...(free?.limits ?? {}), employees: free?.max_employees ?? 1, distributors: free?.max_distributors ?? null, customers: free?.max_customers ?? null };
+}
+
+// Developer-defined catalog of plan features and metered resources (DB, editable without an app update).
+export const DEFAULT_FEATURES = [
+  { key: "reports", label: "التقارير المتقدمة" }, { key: "targets", label: "أهداف المبيعات" }, { key: "routes", label: "خطوط السير" },
+  { key: "tracking", label: "تتبع الموزعين" }, { key: "daily_sms", label: "ملخص SMS اليومي" }, { key: "debt_sms", label: "تذكير الديون SMS" },
+];
+export const DEFAULT_RESOURCES = [
+  { key: "employees", label: "الموظفون" }, { key: "distributors", label: "الموزعون" }, { key: "customers", label: "العملاء" },
+  { key: "products", label: "المنتجات" }, { key: "invoices_month", label: "الفواتير شهرياً" },
+];
+export async function catalogOf(ctx: QueryCtx): Promise<{ features: { key: string; label: string }[]; resources: { key: string; label: string }[] }> {
+  const s: any = await ctx.db.query("app_settings").withIndex("by_key", (q: any) => q.eq("key", "billing_catalog")).unique();
+  const d = s?.data ?? {};
+  const merge = (base: any[], extra: any[] = []) => [...base.filter((b) => !extra.some((x) => x.key === b.key)), ...extra];
+  return { features: merge(DEFAULT_FEATURES, d.features), resources: merge(DEFAULT_RESOURCES, d.resources) };
+}
+
+const monthStart = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString(); };
+export async function orgUsage(ctx: QueryCtx, org_id: string) {
+  const users = await ctx.db.query("users").withIndex("by_org", (q: any) => q.eq("org_id", org_id)).collect();
+  const count = async (t: any) => (await ctx.db.query(t).withIndex("by_org", (q: any) => q.eq("org_id", org_id)).collect()) as any[];
+  const ms = monthStart();
+  return {
+    employees: users.filter((u: any) => u.role === "EMPLOYEE").length,
+    distributors: users.filter((u: any) => u.role === "EMPLOYEE" && u.employee_type === "FIELD_AGENT").length,
+    customers: (await count("customers")).length,
+    products: (await count("products")).filter((p) => !p.archived && !p.deleted).length,
+    invoices_month: (await count("sales")).filter((s) => String(s.created_at) >= ms && !s.voided).length,
+  };
+}
+
+// Backend enforcement of a metered resource (throws a clear upgrade message at the limit).
+export async function assertLimit(ctx: QueryCtx, org: any, key: "products" | "invoices_month", label: string) {
+  const max = (await orgLimits(ctx, org))[key];
+  if (max == null) return;
+  const used = (await orgUsage(ctx, org.id))[key];
+  if (used >= max) throw new Error(`وصلت إلى الحد الأقصى لخطتك في ${label} (${max}) — قم بالترقية لزيادة الحد`);
+}
+
+const TIER_RANK: Record<string, number> = { FREE: 0, PRO: 1, VIP: 2 };
+// Upgrade credit: unused share of the current paid period, only when moving to a higher-ranked plan.
+export function prorate(org: any, plan: any) {
+  if (!isPro(org) || org.plan !== "LICENSE" || org.plan_id === plan.id) return 0;
+  if ((TIER_RANK[plan.tier] ?? 0) <= (TIER_RANK[org.plan_tier ?? "PRO"] ?? 0)) return 0;
+  if (!(org.paid_price > 0) || !(org.period_days > 0)) return 0;
+  const left = Math.max(0, (Date.parse(org.expires_at) - Date.now()) / 86400000);
+  return Math.round(Math.min(org.paid_price, (org.paid_price * left) / org.period_days) * 100) / 100;
 }
 
 // Append-only audit trail (no receipt contents / secrets).
@@ -45,9 +95,9 @@ export async function audit(ctx: MutationCtx, actor: any, action: string, d: { o
 }
 // Trial / legacy licences without a module list get every feature.
 export const hasFeature = (o: any, key: string) => isPro(o) && (!Array.isArray(o.modules) || o.modules.includes(key));
-export const cleanModules = (m: any) => {
+export const cleanModules = (m: any, extra: string[] = []) => {
   if (m == null) return undefined;
-  if (!Array.isArray(m) || m.some((k) => !MODULES.includes(k))) throw new Error("ميزات غير صالحة");
+  if (!Array.isArray(m) || m.some((k) => !MODULES.includes(k) && !extra.includes(k))) throw new Error("ميزات غير صالحة");
   return [...new Set(m as string[])];
 };
 export const newId = () => (globalThis.crypto as Crypto).randomUUID().replace(/-/g, "");
@@ -96,11 +146,13 @@ export async function orgById(ctx: QueryCtx, org_id?: string | null) {
 }
 
 // Role gate equivalent to server.py require(*roles). Returns the user or throws.
-export async function require(ctx: QueryCtx, token: string | undefined, roles: string[]) {
+// `billing: true` = subscription/payment routes: an owner of a frozen / suspended / expired org must still be able
+// to see their plan and pay to renew, so only the role is checked.
+export async function require(ctx: QueryCtx, token: string | undefined, roles: string[], opts: { billing?: boolean } = {}) {
   const user = await getUser(ctx, token);
   const key = roleKey(user);
   if (!key || !roles.includes(key)) throw new Error("ليس لديك صلاحية");
-  if (key !== "DEVELOPER") {
+  if (key !== "DEVELOPER" && !opts.billing) {
     const org = await orgById(ctx, user.org_id);
     if (!org || org.status !== "ACTIVE") throw new Error("اشتراك المؤسسة غير فعال");
     // Expired trial = Free plan (keeps working, Pro features locked); expired paid licence blocks.

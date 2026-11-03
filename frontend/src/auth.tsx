@@ -238,8 +238,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function homeFor(u: User | null | undefined): string {
-  // Phone accounts set their password and name on the login screen.
-  if (!u || u.has_password === false || !u.name) return "login";
+  // Phone accounts set their password on the login screen; owners also type their name there.
+  // Employees never do: their name comes from the owner's invite and is applied on activation.
+  if (!u || u.has_password === false || (!u.name && !!u.role && u.role !== "EMPLOYEE")) return "login";
   if (!u.consent_at) return "consent";
   if (!u.role) return "activate";
   if (u.role === "DEVELOPER") return "dev";

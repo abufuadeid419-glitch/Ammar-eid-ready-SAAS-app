@@ -72,7 +72,7 @@ function InviteSheet({ visible, onClose }: { visible: boolean; onClose: () => vo
         </Card>
       ) : (
         <>
-          <Field testID="invite-name-input" label="اسم الموظف" value={name} onChangeText={setName} />
+          <Field testID="invite-name-input" label="اسم الموظف (يُعتمد تلقائياً عند تفعيله ولا يمكنه تغييره)" value={name} onChangeText={setName} />
           <T v="label" color="onSurfaceSecondary">نوع الحساب</T>
           <View style={{ marginHorizontal: -spacing.lg }}>
             <Segments value={type} onChange={setType} options={[{ key: "FIELD_AGENT", label: "موزع ميداني" }, { key: "ACCOUNTANT", label: "محاسب" }]} />
@@ -136,6 +136,9 @@ export default function OwnerMore() {
   }, [params.invite]);
 
   const delInvite = useMutate<any>("DELETE", (b) => `/employees/invite/${b.id}`, "تم حذف الدعوة");
+  // Owner-only: edit an employee's (or pending invite's) name.
+  const [ren, setRen] = useState<{ id: string; name: string } | null>(null);
+  const rename = useMutate<any>("PATCH", (b) => `/employees/${b.id}/name`, "تم تعديل اسم الموظف", () => setRen(null));
   const removeEmp = useMutate<any>("DELETE", (b) => `/employees/${b.user_id}`, "تمت إزالة الموظف");
   const agents = (emps.data?.employees ?? []).filter((e: any) => e.employee_type === "FIELD_AGENT");
 
@@ -175,7 +178,7 @@ export default function OwnerMore() {
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 {!emps.data?.employees?.length ? <Empty icon="people-outline" text="لا يوجد موظفون مفعّلون" /> : emps.data.employees.map((e: any) => (
                   <Row key={e.user_id} testID={`employee-row-${e.user_id}`} icon={e.employee_type === "ACCOUNTANT" ? "calculator-outline" : "car-outline"} title={e.name ?? e.email} subtitle={`${e.employee_type === "ACCOUNTANT" ? "محاسب" : "موزع ميداني"} · ${e.email}`}
-                    right={<IconBtn testID={`remove-employee-${e.user_id}`} icon="person-remove-outline" onPress={() => removeEmp.mutate(e)} />} />
+                    right={<View style={{ flexDirection: "row", gap: spacing.xs }}><IconBtn testID={`rename-employee-${e.user_id}`} icon="create-outline" onPress={() => setRen({ id: e.user_id, name: e.name ?? "" })} /><IconBtn testID={`remove-employee-${e.user_id}`} icon="person-remove-outline" onPress={() => removeEmp.mutate(e)} /></View>} />
                 ))}
               </Card>
             </Section>
@@ -183,7 +186,7 @@ export default function OwnerMore() {
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 {!emps.data?.invitations?.length ? <Empty icon="mail-outline" text="لا توجد دعوات معلّقة" /> : emps.data.invitations.map((i: any) => (
                   <Row key={i.id} testID={`invite-row-${i.id}`} icon="key-outline" title={i.name} subtitle={i.code}
-                    right={<IconBtn testID={`delete-invite-${i.id}`} icon="trash-outline" onPress={() => delInvite.mutate(i)} />} />
+                    right={<View style={{ flexDirection: "row", gap: spacing.xs }}><IconBtn testID={`rename-invite-${i.id}`} icon="create-outline" onPress={() => setRen({ id: i.id, name: i.name ?? "" })} /><IconBtn testID={`delete-invite-${i.id}`} icon="trash-outline" onPress={() => delInvite.mutate(i)} /></View>} />
                 ))}
               </Card>
             </Section>
@@ -206,6 +209,10 @@ export default function OwnerMore() {
       </KeyboardAwareScrollView>
       <InviteSheet visible={invite} onClose={() => setInvite(false)} />
       <DeliverySheet visible={deliver} onClose={() => setDeliver(false)} agents={agents} />
+      <Sheet testID="rename-employee-sheet" visible={!!ren} onClose={() => setRen(null)} title="تعديل اسم الموظف"
+        footer={<Btn testID="rename-employee-save" title="حفظ الاسم" icon="checkmark" loading={rename.isPending} disabled={(ren?.name.trim().length ?? 0) < 2} onPress={() => ren && rename.mutate({ id: ren.id, name: ren.name })} />}>
+        {ren && <Field testID="rename-employee-input" label="اسم الموظف (يظهر في الفواتير والتقارير)" value={ren.name} onChangeText={(v) => setRen({ ...ren, name: v })} autoFocus />}
+      </Sheet>
     </View>
   );
 }

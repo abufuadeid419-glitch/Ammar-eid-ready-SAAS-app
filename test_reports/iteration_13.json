@@ -1,0 +1,34 @@
+{
+  "summary": "Tested the change that makes the owner the only person who sets employee names, and retested the SaaS fixes from iteration 12, on the LIVE Convex deployment (org_test_1). Backend: 13/13 pytest tests pass. (1) POST /employees/invite rejects an empty, blank or 1-character name with 'أدخل اسم الموظف (2–60 حرفاً)'. With a valid name it creates an EMP- invite. PATCH /employees/<inviteId>/name renames the invite and GET /employees shows the new name; a 1-character name is rejected. DELETE cleans up the invite. (2) Owner PATCH /employees/user_test_agent/name works and the agent's GET /auth/me shows the new name; the original name 'موزع الاختبار' was restored. An unknown id returns 'الموظف غير موجود'. (3) Agent POST /auth/name returns 'اسم الموظف يحدده المالك فقط'. Agent PATCH /employees/:id/name returns 'ليس لديك صلاحية'. (4) SaaS: while FROZEN, owner GET /subscription returns 200 with status FROZEN, and /plans, /subscription/quote and /upgrade-requests all return 200; the org was unfrozen afterwards. /dev/plans with promo_price equal to or above the price is rejected with 'سعر العرض يجب أن يكون أقل'. VIP quote yearly_saving = 120. Frontend (375x667, owner session): the owner more/team screen shows rename-employee-<uid> and rename-invite-<id> icons (44x44 touch targets). Renaming an employee through rename-employee-sheet updated the row and closed the sheet, and the revert also worked. Renaming an invite worked. The save button is disabled for names under 2 characters. Deleting an invite worked and showed a toast. The invite sheet label says the name is applied automatically and the employee cannot change it. Agent session: the app routes straight to /dist with no name step and shows the owner-set name. Code review: activate() copies inv.name and sets name_locked=true; the login name step only shows when the user has a role and is not an EMPLOYEE; homeFor sends users with no role and no name to consent and then activate, not to login. Full activation by a brand-new phone account was NOT tested end-to-end, because it needs real SMS; it was checked by code review only. Cleanup confirmed: org_test_1 is ACTIVE, the agent name is restored and no invites are left.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "DELETE /api/employees/:id (employees.remove)", "issue": "Removing an employee clears role/org_id/employee_type but leaves name_locked=true. If that phone later activates an owner licence or trial, POST /auth/name is still blocked with 'اسم الموظف يحدده المالك فقط', so they can never set their own name. Reference: /app/frontend/convex/employees.ts:116, /app/frontend/convex/edge.ts:301"},
+      {"endpoint": "DELETE /api/employees/invite/:id", "issue": "Returns ok:true even when the id does not exist or belongs to another org. Silent success, not a 404."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Owner more / team tab", "issues": ["ProUpsell text always says 'الخطة التجريبية تسمح بـ N موظفين' even when the org is on a LICENSE (non-trial) plan, so the copy is misleading (src/screens/OwnerMore.tsx:176).", "remove-employee-<uid> removes the employee straight away with no confirmation dialog, so one mis-tap next to the new rename icon unlinks an employee."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_employee_name_ownership.py", "/app/test_reports/pytest/pytest_iter13.xml"],
+  "action_items": [
+    "LOW: in employees.remove, also clear name_locked (set it to false/null) so a removed employee who later becomes an owner can set their name.",
+    "LOW: make the team-tab ProUpsell copy depend on the plan (do not say 'الخطة التجريبية' for LICENSE or paid plans).",
+    "LOW: add a confirmation before remove-employee, which now sits right next to the rename icon."
+  ],
+  "critical_code_review_comments": [
+    "activate() relies on `inv.name || user.name`: legacy invites without a name fall back to the user's name, which may be null for brand-new phone accounts. homeFor will then not send EMPLOYEE users to the name step, so they end up with no display name (shown as email or phone). This is acceptable, but the owner should rename them.",
+    "The schema has no name_locked field; it works only because schemaValidation is false. Consider adding v.optional(v.boolean()) to users for type safety."
+  ],
+  "updated_files": ["/app/backend/tests/test_employee_name_ownership.py"],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (owner rename employee/invite, invite label, agent routing)"},
+  "seed_data_creation": "Temporary invites TEST_INV_NAME and TEST_INV_UI were created and deleted. Agent name was changed and restored to 'موزع الاختبار'. org_test_1 was frozen and then unfrozen (ACTIVE).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Reuse test_employee_name_ownership.py (it imports helpers from test_saas_billing_cycle.py). In the web UI, set localStorage tour_done_owner='1' (or tour_done_dist) to skip the guided tour. Wait about 4s after load before clicking, because the splash overlay swallows force-clicks. Owner team screen: /owner/more."
+}

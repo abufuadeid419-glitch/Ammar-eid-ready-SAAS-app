@@ -14,6 +14,8 @@ import { MODULE_LABELS, isPro, planLabel, priceFor, promoOn, tierLabel } from "@
 import { PickedFile, pickReceiptImage, pickReceiptPdf } from "@/src/utils/receipt";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Card, Empty, Field, Header, Ionicons, Loading, Section, Segments, Sheet, T, useToast } from "@/src/ui";
+import { SubscriptionOverview, UsageAlerts } from "@/src/components/UsageMeters";
+import { DateField } from "@/src/components/DateField";
 
 const OPEN = ["PENDING", "UNDER_REVIEW", "NEEDS_INFO"];
 const newKey = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
@@ -93,6 +95,11 @@ export default function Subscription() {
     [methods.data, sel],
   );
   const method = okMethods.find((m) => m.id === form?.method_id);
+  const quote = useApi<any>(`/subscription/quote?plan_id=${sel?.id}&billing=${billing}`, !!sel);
+  // Prefill the transferred amount with the server-computed amount due (incl. upgrade credit).
+  useEffect(() => {
+    if (quote.data && form && form.amount === "") setForm((f: any) => (f ? { ...f, amount: String(quote.data.due) } : f));
+  }, [quote.data, form]);
 
   // Deep link from the dashboard pricing card: /upgrade?plan=<id>&billing=monthly|yearly opens checkout.
   const params = useLocalSearchParams<{ plan?: string; billing?: string }>();
@@ -113,7 +120,7 @@ export default function Subscription() {
     setSel(p);
     setFile(null);
     // One idempotency key per checkout: retries / double taps can't create two requests.
-    setForm({ method_id: null, amount: String(priceFor(p, billing) ?? ""), ref: "", notes: "", key: newKey() });
+    setForm({ method_id: null, amount: "", ref: "", notes: "", key: newKey() });
   };
   const refetchAll = () => {
     queryClient.invalidateQueries();
@@ -129,7 +136,7 @@ export default function Subscription() {
       const r = await api<any>("/upgrade-requests", {
         method: "POST",
         timeoutMs: 90000,
-        body: { plan_id: sel.id, billing, method_id: method.id, amount: +form.amount || 0, payment_ref: form.ref, notes: form.notes, idem_key: form.key, receipt: file?.base64 },
+        body: { plan_id: sel.id, billing, method_id: method.id, amount: +form.amount || 0, payment_ref: form.ref, notes: form.notes, idem_key: form.key, receipt: file?.base64, transfer_date: form.date || undefined },
       });
       toast(`تم إرسال الطلب ${r.ref_code ?? ""} — بانتظار تحقق المطور`);
       setSel(null);
@@ -162,15 +169,8 @@ export default function Subscription() {
         contentContainerStyle={{ padding: spacing.lg, gap: spacing.xl, paddingBottom: insets.bottom + spacing.xl }}
         refreshControl={<RefreshControl refreshing={plans.isRefetching} onRefresh={refetchAll} tintColor={colors.brandPrimary} />}
       >
-        <Card testID="current-plan-card" style={{ gap: spacing.xs, backgroundColor: colors.brandTertiary, borderColor: colors.brandSecondary }}>
-          <T v="caption">اشتراكك الحالي</T>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <T v="h2" style={{ flex: 1 }}>{org?.plan === "LICENSE" ? org?.plan_name ?? tierLabel(org?.plan_tier) : planLabel(org)}</T>
-            <Badge testID="current-plan-status" text={isPro(org) ? "فعّال" : org?.status === "SUSPENDED" ? "موقوف" : "الخطة المجانية"} tone={isPro(org) ? "success" : "warning"} />
-          </View>
-          {isPro(org) && <T v="caption">ينتهي {fmtDate(org.expires_at)}{org.grace_until ? ` · فترة سماح حتى ${fmtDate(org.grace_until)}` : ""}</T>}
-          {isPro(org) && <T v="caption">{lim(org.max_employees, "موظف")} · {lim(org.max_distributors, "موزع")} · {lim(org.max_customers, "عميل")}</T>}
-        </Card>
+        <SubscriptionOverview />
+        <UsageAlerts />
 
         <Section title="الخطط المتاحة">
           {hasYearly && (
@@ -199,6 +199,12 @@ export default function Subscription() {
                     {!free && price != null && <T v="caption">/ {billing === "yearly" ? "سنة" : `${p.days} يوم`}</T>}
                     {!free && billing === "monthly" && promoOn(p) && p.promo_price < p.price && <T v="caption" style={{ textDecorationLine: "line-through" }}>{money(p.price)}</T>}
                   </View>
+                  {!free && p.yearly_price > 0 && priceFor(p, "monthly") != null && (() => {
+                    const full = priceFor(p, "monthly") * Math.max(1, Math.round(365 / (p.days || 30)));
+                    const save = Math.max(0, full - p.yearly_price);
+                    return save > 0 ? <T v="caption" color="success" testID={`plan-yearly-saving-${p.id}`}>السنوي يوفّر {money(save)} {p.currency} ({Math.round((save / full) * 100)}%)</T> : null;
+                  })()}
+                  {org?.plan_id === p.id && isPro(org) && <Badge testID={`plan-current-${p.id}`} text="خطتك الحالية" tone="success" />}
                   <Line text={lim(p.max_employees, "موظف")} />
                   <Line text={lim(p.max_distributors, "موزع")} />
                   <Line text={lim(p.max_customers, "عميل")} />
@@ -258,7 +264,8 @@ export default function Subscription() {
         {sel && form && (
           <>
             <Card style={{ gap: spacing.xs }}>
-              <T v="label" testID="upgrade-amount">المبلغ المطلوب: {money(priceFor(sel, billing))} {sel.currency} · {billing === "yearly" ? "سنوي" : `${sel.days} يوم`}</T>
+              <T v="label" testID="upgrade-amount">المبلغ المطلوب: {money(quote.data?.due ?? priceFor(sel, billing))} {sel.currency} · {billing === "yearly" ? "سنوي" : `${sel.days} يوم`}</T>
+              {quote.data?.credit > 0 && <T v="caption" color="success" testID="upgrade-credit">سعر الخطة {money(quote.data.price)} − رصيد الأيام المتبقية من خطتك الحالية {money(quote.data.credit)}</T>}
               {!!pay.data?.instructions && <T v="caption">{pay.data.instructions}</T>}
             </Card>
             <T v="label">طريقة الدفع</T>
@@ -291,6 +298,7 @@ export default function Subscription() {
             )}
             <Field testID="payment-amount-input" label={`المبلغ المحوَّل (${sel.currency})`} keyboardType="decimal-pad" value={form.amount} onChangeText={(v) => setForm({ ...form, amount: v.replace(/[^\d.]/g, "") })} />
             <Field testID="payment-ref-input" label={`رقم / مرجع التحويل${method?.require_reference === false ? " (اختياري)" : ""}`} value={form.ref} onChangeText={(v) => setForm({ ...form, ref: v })} />
+            <DateField testID="payment-date-input" label="تاريخ التحويل" value={form.date ?? ""} onChange={(v: string) => setForm({ ...form, date: v })} />
             <Field testID="upgrade-notes-input" label="ملاحظة (اختياري)" value={form.notes} onChangeText={(v) => setForm({ ...form, notes: v })} />
             <FilePicker file={file} setFile={setFile} maxMb={maxMb} prefix="receipt" />
           </>

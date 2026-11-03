@@ -1,0 +1,44 @@
+{
+  "summary": "Full SaaS billing cycle tested on LIVE Convex (fearless-ostrich-878), org_test_1 only. Backend pytest (test_saas_billing_cycle.py, 20 tests + blocked-org probe): plans Free/Pro(25/300)/VIP(60/600) ✓, GET /subscription shape+meters ✓, quote ✓ (yearly_saving=130 not 120, see minor), owner blocked on all 4 dev routes with 'ليس لديك صلاحية' ✓, Sham Cash method+QR ✓, submit PENDING (org not activated) ✓, idem_key duplicate returns same request ✓, 2nd open request blocked ✓, reject+note visible to owner (REJECTED/test) ✓, approve -> VIP ACTIVE, expires≈now+30d, ledger PAYMENT ✓, re-approve blocked ('تمت مراجعة هذا الطلب') ✓, reused payment_ref blocked ('رقم العملية هذا مستخدم') ✓, renewal extends exactly +30d from current end + ledger RENEWAL ✓, freeze/unfreeze (time preserved)/extend +5d/suspend/reactivate ✓, /dev/subscriptions?status=ACTIVE ✓, audit has subscription.* + payment.* ✓, private TEST_LIMIT plan (products:1) -> POST /products rejected 'وصلت إلى الحد الأقصى', meter products 100% ✓, archive ✓, catalog 'warehouses' added keeping defaults ✓. FAIL: owner of a FROZEN/SUSPENDED (and by code EXPIRED) org gets 403 'اشتراك المؤسسة غير فعال' on /subscription, /subscription/quote and POST /upgrade-requests -> cannot see status or pay to renew. DATA BUG: Pro has promo_price 199 > price 25 (until 2026/11/05) so Pro monthly currently charges 199 USD and UI shows 'السنوي يوفّر 2,121.17 USD (88%)'. Frontend (390x844): owner dashboard usage-alert (≥80%) + 'ترقية الآن' -> /upgrade ✓; /upgrade overview/status/start/end/meters/payment-status ✓; plan cards + plan-yearly-saving ✓; VIP choose -> upgrade-request-sheet, upgrade-amount 60 USD, method select shows QR (720px loaded) + instructions, date picker sheet, receipt image/PDF pickers, validation toast 'اختر طريقة الدفع' ✓. Dev (/dev/billing): subs tab + dev-sub-sheet (freeze/suspend/extend/days/note), ledger (2 rows, net 120 USD), catalog (warehouses shown), plan editor plan-extras/plan-limit-products/plan-org-ids-input ✓. Cleanup done: org_test_1 = Pro ACTIVE until 2027-11-03; TEST_LIMIT archived. No deprecated expo packages found in this scope.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /subscription, GET /subscription/quote, POST /upgrade-requests (lib.ts require() line ~155-157)", "issue": "require(OWNER) throws 403 'اشتراك المؤسسة غير فعال' when org.status != ACTIVE and 'انتهى اشتراك المؤسسة' when a paid licence is expired. So FROZEN/SUSPENDED/EXPIRED owners cannot see their status (mine() FROZEN/SUSPENDED/EXPIRED branches are unreachable) and cannot submit a renewal payment; blocked.tsx 'تجديد / ترقية الخطة' sends them to /upgrade which will fail. /plans, /payment-methods, /upgrade-requests GET work (they use getUser). Fix: add a billing-safe gate (e.g. requireOwnerAnyStatus) for mine/quote/submitPayment/resubmitReceipt/cancelRequest; decide policy for FROZEN/SUSPENDED (at least view), but EXPIRED must be able to pay.", "priority": "HIGH"},
+      {"endpoint": "Plan data Pro 2ad56e48... / planBody validation (billing.ts ~83)", "issue": "Live Pro plan has promo_price=199 > price=25 (promo_until 2026/11/05). periodPrice uses promo -> quote monthly price/due = 199 USD and yearly_saving = 2121.17; UI shows 'السنوي يوفّر 2,121.17 USD (88%)'. planBody does not validate promo_price < price. Fix data now and reject promo_price >= price (and promo without promo_until).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /subscription/quote yearly_saving + Subscription.tsx:203", "issue": "Saving computed as monthly*365/30 - yearly (VIP: 730-600=130, 18%). Users expect 12×monthly (720-600=120, 17%). Consider 12 months for 30-day plans."},
+      {"endpoint": "PUT /dev/billing/catalog", "issue": "Resource keys are permanent and global; test resource 'warehouses' now shows as a meter 'المستودعات — / بلا حد' for every org (no usage counter -> used=null). Hide meters with used==null && max==null, or allow removing resources not used by any plan."},
+      {"endpoint": "billing_ledger", "issue": "Test cycle added 2 VIP rows for org_test_1 (PAYMENT + RENEWAL, 120 USD) to the live ledger/revenue (append-only). Consider excluding org_test_* from stats."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Subscription upgrade sheet", "issue": "Only one payment method (شام كاش) exists but it is not pre-selected; QR/instructions hidden until tapped, submit shows 'اختر طريقة الدفع'. Auto-select when exactly one method.", "testID": "method-option-90e09c39e8ba4d089d6e1eba106f40ee", "priority": "LOW"},
+      {"component": "Subscription upgrade sheet", "issue": "copy-account-button not rendered because Sham Cash method has empty account/recipient — owner only gets QR. Fill account in method data if a copy-able account is desired.", "testID": "copy-account-button", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Blocked/expired org renewal", "issue": "blocked-upgrade-button -> /upgrade, but backend 403s /subscription, /subscription/quote and POST /upgrade-requests for non-ACTIVE/expired orgs (see backend critical #1).", "affected_testIDs": ["blocked-upgrade-button", "subscription-overview", "submit-upgrade-button"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_saas_billing_cycle.py", "/app/backend/tests/test_saas_blocked_org_renewal.py", "/app/backend/tests/ui_limit_setup.py", "/app/test_reports/pytest/saas_billing.xml"],
+  "action_items": [
+    "HIGH: Let OWNER of FROZEN/SUSPENDED/EXPIRED org call GET /subscription, /subscription/quote and POST /upgrade-requests (+ resubmit/cancel) so they can see status and pay to renew; re-run test_saas_blocked_org_renewal.py.",
+    "HIGH: Fix Pro plan promo_price (199 > 25) in live data and add validation promo_price < price in planBody.",
+    "LOW: yearly_saving use 12 × monthly for 30-day plans (VIP shows 130 instead of 120).",
+    "LOW: Hide usage meters with no counter (warehouses shows '—'); auto-select the single payment method in upgrade sheet."
+  ],
+  "critical_code_review_comments": [
+    "lib.ts require(): org status gate is applied to billing endpoints, making subscription.mine status branches FROZEN/SUSPENDED/EXPIRED dead code.",
+    "billing.ts devReview approve of a different plan starts a new period from now (remaining time compensated only via prorate credit, which is 0 when org.paid_price is missing e.g. manually assigned plans) — acceptable but document it.",
+    "billing.ts is 734 lines (>700) — consider splitting (plans / methods / requests)."
+  ],
+  "updated_files": ["/app/backend/tests/test_saas_billing_cycle.py", "/app/backend/tests/test_saas_blocked_org_renewal.py", "/app/backend/tests/ui_limit_setup.py"],
+  "success_rate": {"backend": "86% (19/22 checks; failures: owner view while frozen/suspended, blocked-org renewal, yearly_saving formula)", "frontend": "95% (all requested elements/flows work; 2 low UX items)"},
+  "seed_data_creation": "Live data created for org_test_1: 3 VIP upgrade requests (1 REJECTED, 2 APPROVED), ledger PAYMENT+RENEWAL rows, private plan TEST_LIMIT (archived), catalog resource 'warehouses' (permanent), audit entries. Final state restored: org_test_1 Pro ACTIVE until 2027-11-03.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend/tests && python -m pytest test_saas_billing_cycle.py -p no:cacheprovider -n0 (tests are order-dependent, use -n0 / single worker). test_saas_blocked_org_renewal.py freezes then unfreezes org_test_1. ui_limit_setup.py on|off toggles TEST_LIMIT plan (products limit 1) for UI alert testing — always run 'off' afterwards. test_token_dev has no password: intercept **/api/auth/me with page.route and set has_password=true to reach /dev/billing; skip the onboarding tour ('تخطي الجولة') before tapping; segment tab 'الاشتراكات' duplicates bottom-tab label (pick the one with y<250).",
+  "rca_of_issue": "Blocked-org renewal: lib.ts require() rejects non-DEVELOPER users whose org.status!='ACTIVE' or whose LICENSE is expired; subscription.mine/quote and billing.submitPayment use require(OWNER). Repro: POST /dev/subscriptions/org_test_1/action {action:'freeze'} -> GET /subscription as owner -> 403 'اشتراك المؤسسة غير فعال'. Mitigation: dedicated gate that validates role/org but skips status/expiry for billing endpoints."
+}

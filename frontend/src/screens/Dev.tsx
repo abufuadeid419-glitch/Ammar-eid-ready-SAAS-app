@@ -11,6 +11,7 @@ import { planLabel } from "@/src/pro";
 import { useApi, useBottomChrome, useMutate } from "@/src/hooks";
 import { spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Card, Empty, ErrorBox, Field, Header, HeaderIconBtn, IconBtn, Loading, Row, Sheet, Stat, T, useToast } from "@/src/ui";
+import { OrgDangerZone } from "@/src/components/DevDelete";
 
 export function DevHome() {
   const { colors } = useTheme();
@@ -131,6 +132,7 @@ export function DevOrgs({ header }: { header?: ReactNode }) {
             ) : (
               <Btn testID="activate-org-button" variant="secondary" title="إعادة التفعيل" icon="play-circle-outline" onPress={() => patch.mutate({ id: sel.id, status: "ACTIVE" })} />
             )}
+            <OrgDangerZone org={sel} onDone={() => setSel(null)} />
           </>
         )}
       </Sheet>

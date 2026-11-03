@@ -24,6 +24,7 @@ import {
   audit,
   hasFeature,
   MODULES,
+  catalogOf,
   TIERS,
   cleanModules,
 } from "./lib";
@@ -545,7 +546,7 @@ export const devPatchOrg = mutation({
     const patch: any = {};
     // Developer can override a company's tier, features and limits directly.
     if (a.plan_tier !== undefined) { if (!TIERS.includes(a.plan_tier)) throw new Error("فئة الخطة غير صالحة"); patch.plan_tier = a.plan_tier; }
-    if (a.modules !== undefined) patch.modules = cleanModules(a.modules);
+    if (a.modules !== undefined) patch.modules = cleanModules(a.modules, (await catalogOf(ctx)).features.map((f) => f.key));
     if (a.max_employees !== undefined) patch.max_employees = Math.max(1, Math.floor(a.max_employees));
     if (a.max_customers !== undefined) patch.max_customers = a.max_customers == null ? null : Math.max(0, Math.floor(a.max_customers));
     if (a.max_distributors !== undefined) patch.max_distributors = a.max_distributors == null ? null : Math.max(0, Math.min(Math.floor(a.max_distributors), patch.max_employees ?? org.max_employees ?? Infinity));

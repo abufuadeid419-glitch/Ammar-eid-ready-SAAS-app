@@ -416,6 +416,14 @@ export default defineSchema(
       n: v.optional(v.number()),
     }).index("by_org_kind", ["org_id", "kind"]),
 
+    // Financial log of subscription payments / renewals / refunds (append-only).
+    billing_ledger: defineTable({
+      org_id: v.string(),
+      type: v.string(),
+      amount: v.number(),
+      created_at: v.string(),
+    }).index("by_org", ["org_id"]),
+
     // Pre-reserved document number ranges per user + device (see numbering.ts).
     number_blocks: defineTable({
       org_id: v.string(),

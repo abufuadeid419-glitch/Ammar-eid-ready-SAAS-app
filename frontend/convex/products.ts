@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import { mutation, query } from "./_generated/server";
-import { ANY_ORG, OWNER, clean, cleanAll, logMovement, newId, nowIso, require, round2 } from "./lib";
+import { ANY_ORG, OWNER, assertLimit, clean, cleanAll, logMovement, newId, nowIso, orgById, require, round2 } from "./lib";
 
 // GET /api/products  (ANY_ORG)
 export const list = query({
@@ -34,6 +34,7 @@ export const create = mutation({
   },
   handler: async (ctx, a) => {
     const user = await require(ctx, a.token, OWNER);
+    await assertLimit(ctx, await orgById(ctx, user.org_id!), "products", "المنتجات");
     const ppp = Math.max(1, Math.round(a.pieces_per_package ?? 1));
     const salePiece = a.sale_price ?? 0;
     const doc = {

@@ -7,7 +7,7 @@ import { internal } from "./_generated/api";
 import { sendSms } from "./edge";
 import {
   DEV, MODULES, OWNER, PLAN_FIELDS, PLAN_TIERS, audit, clean, cleanAll, cleanModules, getUser, isExpired, isPro, newId, notify, nowIso,
-  orgById, orgLimits, periodPrice, pubOf, require, snapshotPlan,
+  catalogOf, orgById, orgLimits, periodPrice, prorate, pubOf, require, round2, snapshotPlan,
 } from "./lib";
 
 const OPEN = ["PENDING", "UNDER_REVIEW", "NEEDS_INFO"];
@@ -60,7 +60,7 @@ export const plansList = query({
     }
     return rows
       .map(pubOf)
-      .filter(Boolean)
+      .filter((p: any) => p && (!p.org_ids?.length || p.org_ids.includes(user.org_id)))
       .sort((a: any, b: any) => (a.sort_order ?? 99) - (b.sort_order ?? 99) || (a.price ?? 0) - (b.price ?? 0));
   },
 });
@@ -73,14 +73,16 @@ const planArgs = {
   max_distributors: v.optional(v.union(v.number(), v.null())), max_customers: v.optional(v.union(v.number(), v.null())),
   modules: v.optional(v.array(v.string())), features: v.optional(v.any()), active: v.optional(v.boolean()),
   recommended: v.optional(v.boolean()), sort_order: v.optional(v.number()),
+  limits: v.optional(v.any()), org_ids: v.optional(v.array(v.string())),
 };
 const nn = (x: any) => (x == null || x === "" ? null : Math.max(0, Math.floor(Number(x))));
-function planBody(a: any) {
+function planBody(a: any, cat: { features: { key: string }[]; resources: { key: string }[] }) {
   if (!a.name.trim()) throw new Error("أدخل اسم الخطة");
   const tier = a.tier ?? "PRO";
   if (!PLAN_TIERS.includes(tier)) throw new Error("فئة الخطة غير صالحة");
   for (const p of [a.price, a.yearly_price, a.promo_price]) if (p != null && (!(p >= 0) || p > 1e9)) throw new Error("السعر غير صالح");
   if (a.promo_until && isNaN(Date.parse(a.promo_until))) throw new Error("تاريخ انتهاء العرض غير صالح");
+  if (a.promo_price != null && tier !== "FREE" && !(a.promo_price < a.price)) throw new Error("سعر العرض يجب أن يكون أقل من السعر الأساسي");
   const max_employees = Math.max(1, Math.floor(a.max_employees ?? 5));
   const md = nn(a.max_distributors);
   return {
@@ -89,8 +91,12 @@ function planBody(a: any) {
     promo_price: a.promo_price ?? null, promo_until: a.promo_until || null, currency: (a.currency || "USD").toUpperCase().slice(0, 6),
     days: Math.max(1, Math.floor(a.days ?? 30)), trial_days: Math.max(0, Math.floor(a.trial_days ?? 0)), grace_days: Math.max(0, Math.min(60, Math.floor(a.grace_days ?? 0))),
     max_employees, max_distributors: md == null ? null : Math.min(md, max_employees), max_customers: nn(a.max_customers),
-    modules: cleanModules(a.modules) ?? MODULES, features: Array.isArray(a.features) ? a.features.slice(0, 20).map((f: any) => String(f).slice(0, 120)) : [],
+    modules: cleanModules(a.modules, cat.features.map((f) => f.key)) ?? MODULES, features: Array.isArray(a.features) ? a.features.slice(0, 20).map((f: any) => String(f).slice(0, 120)) : [],
     active: a.active ?? true, recommended: !!a.recommended, sort_order: Math.floor(a.sort_order ?? 10),
+    // Dynamic resource limits (catalog keys other than the 3 legacy fields); null/empty = unlimited.
+    limits: Object.fromEntries(cat.resources.filter((r) => !["employees", "distributors", "customers"].includes(r.key)).map((r) => [r.key, nn(a.limits?.[r.key])])),
+    // Custom plan visible only to these organizations (empty = public).
+    org_ids: Array.isArray(a.org_ids) ? [...new Set(a.org_ids.map(String))].slice(0, 50) : [],
   };
 }
 
@@ -99,7 +105,7 @@ export const devPlanCreate = mutation({
   args: planArgs,
   handler: async (ctx, a) => {
     const user = await require(ctx, a.token, DEV);
-    const doc = { id: newId(), ...planBody(a), status: "draft", published: null, version: 0, created_at: nowIso(), updated_at: nowIso() };
+    const doc = { id: newId(), ...planBody(a, await catalogOf(ctx)), status: "draft", published: null, version: 0, created_at: nowIso(), updated_at: nowIso() };
     await ctx.db.insert("plans", doc);
     await audit(ctx, user, "plan.create", { target: doc.id, after: snapshotPlan(doc) });
     return doc;
@@ -113,7 +119,7 @@ export const devPlanUpdate = mutation({
     const p: any = await ctx.db.query("plans").withIndex("by_biz_id", (q) => q.eq("id", a.id)).unique();
     if (!p) throw new Error("الخطة غير موجودة");
     const live = pubOf(p);
-    const body = planBody(a);
+    const body = planBody(a, await catalogOf(ctx));
     // Legacy plan (no status): freeze its current values as the published version first.
     const extra = !p.status ? { published: snapshotPlan(p), version: 1 } : {};
     await ctx.db.patch(p._id, { ...body, ...extra, status: p.status === "archived" ? "archived" : live || extra.published ? "changed" : "draft", updated_at: nowIso() });
@@ -344,9 +350,10 @@ export const createRequest = internalMutation({
   args: {
     token: v.string(), plan_id: v.string(), billing: v.string(), method_id: v.string(), amount: v.number(), payment_ref: v.string(),
     notes: v.optional(v.string()), idem_key: v.string(), storageId: v.union(v.string(), v.null()), receipt_type: v.optional(v.string()), receipt_size: v.optional(v.number()),
+    transfer_date: v.optional(v.string()),
   },
   handler: async (ctx, a): Promise<any> => {
-    const user = await require(ctx, a.token, OWNER);
+    const user = await require(ctx, a.token, OWNER, { billing: true });
     const mine = await ctx.db.query("upgrade_requests").withIndex("by_org", (q) => q.eq("org_id", user.org_id!)).collect();
     // Idempotency: retries / double taps with the same key return the first request.
     const dup = mine.find((r) => r.idem_key === a.idem_key);
@@ -357,7 +364,7 @@ export const createRequest = internalMutation({
     if (mine.filter((r) => Date.parse(r.created_at ?? "") > dayAgo).length >= st.max_requests_per_day) throw new Error("تجاوزت عدد الطلبات المسموح يومياً");
     const planDoc: any = await ctx.db.query("plans").withIndex("by_biz_id", (q) => q.eq("id", a.plan_id)).unique();
     const plan: any = pubOf(planDoc);
-    if (!plan) throw new Error("الخطة غير متاحة");
+    if (!plan || (plan.org_ids?.length && !plan.org_ids.includes(user.org_id))) throw new Error("الخطة غير متاحة");
     if (plan.tier === "FREE") throw new Error("الخطة المجانية لا تحتاج إلى دفع");
     const period = periodPrice(plan, a.billing);
     if (!period) throw new Error("فترة الفوترة غير متاحة لهذه الخطة");
@@ -372,16 +379,22 @@ export const createRequest = internalMutation({
     const ref = a.payment_ref.trim().slice(0, 80);
     if (m.require_reference !== false && !ref) throw new Error("أدخل رقم/مرجع عملية التحويل");
     if (m.require_receipt !== false && !a.storageId) throw new Error("أرفق صورة أو ملف PDF لإيصال التحويل");
+    if (a.transfer_date && (isNaN(Date.parse(a.transfer_date)) || Date.parse(a.transfer_date) > Date.now() + 86400000)) throw new Error("تاريخ التحويل غير صالح");
+    // The same transfer reference can never pay twice.
+    if (ref && (await ctx.db.query("upgrade_requests").withIndex("by_status", (q) => q.eq("status", "APPROVED")).collect()).some((r: any) => r.method_id === m.id && (r.payment_ref ?? "").trim() === ref))
+      throw new Error("رقم العملية هذا مستخدم في دفعة معتمدة سابقاً");
     const org: any = await orgById(ctx, user.org_id!);
+    const credit = prorate(org, plan);
+    const due = round2(Math.max(0, period.price - credit));
     const now = nowIso();
     // Price/limits are frozen into the request: later plan edits never change it.
     const doc = {
       id: newId(), ref_code: `PAY-${now.slice(2, 10).replace(/-/g, "")}-${newId().slice(0, 5).toUpperCase()}`, idem_key: a.idem_key,
       org_id: org.id, org_name: org.name, owner_id: user.user_id, owner_email: user.phone ?? user.email, plan_id: plan.id,
       plan_name: plan.name + (a.billing === "yearly" ? " (سنوي)" : ""), billing: a.billing === "yearly" ? "yearly" : "monthly",
-      price: period.price, currency: plan.currency, days: period.days, grace_days: plan.grace_days ?? 0, tier: plan.tier,
+      price: due, list_price: period.price, credit, currency: plan.currency, days: period.days, limits: plan.limits ?? {}, transfer_date: a.transfer_date ?? null, grace_days: plan.grace_days ?? 0, tier: plan.tier,
       modules: plan.modules ?? MODULES, max_employees: plan.max_employees, max_distributors: plan.max_distributors ?? null, max_customers: plan.max_customers ?? null,
-      method_id: m.id, method_name: m.name, amount: a.amount, amount_mismatch: Math.abs(a.amount - period.price) > 0.009,
+      method_id: m.id, method_name: m.name, amount: a.amount, amount_mismatch: Math.abs(a.amount - due) > 0.009,
       payment_ref: ref, notes: (a.notes ?? "").slice(0, 500), receipt_storage: a.storageId, receipt_type: a.receipt_type, receipt_size: a.receipt_size,
       status: "PENDING", history: [{ status: "PENDING", by: "owner", at: now }], created_at: now,
     };
@@ -398,7 +411,7 @@ export const createRequest = internalMutation({
 export const submitPayment = action({
   args: {
     token: v.string(), plan_id: v.string(), billing: v.optional(v.string()), method_id: v.string(), amount: v.number(), payment_ref: v.optional(v.string()),
-    notes: v.optional(v.string()), idem_key: v.string(), receipt: v.optional(v.string()),
+    notes: v.optional(v.string()), idem_key: v.string(), receipt: v.optional(v.string()), transfer_date: v.optional(v.string()),
   },
   handler: async (ctx, a): Promise<any> => {
     if (!/^[A-Za-z0-9-]{8,64}$/.test(a.idem_key)) throw new Error("طلب غير صالح");
@@ -412,7 +425,7 @@ export const submitPayment = action({
     try {
       const r = await ctx.runMutation(internal.billing.createRequest, {
         token: a.token, plan_id: a.plan_id, billing: a.billing ?? "monthly", method_id: a.method_id, amount: a.amount, payment_ref: a.payment_ref ?? "",
-        notes: a.notes, idem_key: a.idem_key, storageId, receipt_type: f?.type, receipt_size: f?.bytes.length,
+        notes: a.notes, idem_key: a.idem_key, storageId, receipt_type: f?.type, receipt_size: f?.bytes.length, transfer_date: a.transfer_date,
       });
       if (r.duplicate && storageId) await ctx.storage.delete(storageId);
       return r;
@@ -428,7 +441,7 @@ export const settingsInternal = internalQuery({ args: {}, handler: async (ctx) =
 export const replaceReceipt = internalMutation({
   args: { token: v.string(), id: v.string(), storageId: v.string(), receipt_type: v.string(), receipt_size: v.number(), payment_ref: v.optional(v.string()), amount: v.optional(v.number()) },
   handler: async (ctx, a) => {
-    const user = await require(ctx, a.token, OWNER);
+    const user = await require(ctx, a.token, OWNER, { billing: true });
     const r: any = await ctx.db.query("upgrade_requests").withIndex("by_biz_id", (q) => q.eq("id", a.id)).unique();
     if (!r || r.org_id !== user.org_id) throw new Error("الطلب غير موجود");
     const st = await billingSettings(ctx);
@@ -466,7 +479,7 @@ export const resubmitReceipt = action({
 export const cancelRequest = mutation({
   args: { token: v.string(), id: v.string() },
   handler: async (ctx, { token, id }) => {
-    const user = await require(ctx, token, OWNER);
+    const user = await require(ctx, token, OWNER, { billing: true });
     const r: any = await ctx.db.query("upgrade_requests").withIndex("by_biz_id", (q) => q.eq("id", id)).unique();
     if (!r || r.org_id !== user.org_id) throw new Error("الطلب غير موجود");
     if (!OPEN.includes(r.status)) throw new Error("لا يمكن إلغاء هذا الطلب");
@@ -530,6 +543,10 @@ export const devReview = mutation({
     const status = t[1];
     let orgAfter: any = null;
     if (status === "APPROVED") {
+      // Same receipt reference approved before (other request) → never activate twice.
+      const ref = (r.payment_ref ?? "").trim();
+      if (ref && (await ctx.db.query("upgrade_requests").withIndex("by_status", (q) => q.eq("status", "APPROVED")).collect()).some((x: any) => x.id !== r.id && x.method_id === r.method_id && (x.payment_ref ?? "").trim() === ref))
+        throw new Error("هذا الإيصال/رقم العملية معتمد مسبقاً في طلب آخر");
       // Renewal of the same plan extends from the current end; a new/changed plan starts now.
       const renew = org.plan === "LICENSE" && org.plan_id === r.plan_id && !isExpired(org) && org.status === "ACTIVE";
       const base = renew ? Math.max(Date.parse(org.expires_at), Date.now()) : Date.now();
@@ -538,9 +555,11 @@ export const devReview = mutation({
       orgAfter = {
         plan: "LICENSE", plan_id: r.plan_id, plan_name: r.plan_name, plan_tier: r.tier ?? "PRO", modules: r.modules ?? MODULES,
         max_employees: r.max_employees, max_distributors: r.max_distributors ?? null, max_customers: r.max_customers ?? null,
-        status: "ACTIVE", expires_at: expires, grace_until: grace,
+        status: "ACTIVE", expires_at: expires, grace_until: grace, limits: r.limits ?? {},
+        started_at: renew ? org.started_at ?? nowIso() : nowIso(), paid_price: r.list_price ?? r.price, period_days: r.days ?? 30,
       };
       await ctx.db.patch(org._id, orgAfter);
+      await ctx.db.insert("billing_ledger", { org_id: r.org_id, org_name: r.org_name, request_id: r.id, ref_code: r.ref_code, type: renew ? "RENEWAL" : "PAYMENT", plan_name: r.plan_name, amount: r.price, credit: r.credit ?? 0, currency: r.currency, method_name: r.method_name, payment_ref: r.payment_ref, by: user.user_id, created_at: nowIso() });
     }
     await ctx.db.patch(r._id, {
       status, review_note: note || r.review_note || "", reviewed_at: nowIso(), reviewer_id: user.user_id,
@@ -560,6 +579,7 @@ export const devReview = mutation({
       REFUNDED: ["تم تسجيل استرداد المبلغ", note],
     };
     if (status === "REFUNDED") {
+      await ctx.db.insert("billing_ledger", { org_id: r.org_id, org_name: r.org_name, request_id: r.id, ref_code: r.ref_code, type: "REFUND", plan_name: r.plan_name, amount: -(r.price ?? 0), currency: r.currency, method_name: r.method_name, payment_ref: r.payment_ref, note, by: user.user_id, created_at: nowIso() });
       // Refund is tracking only; flag it so the developer can suspend / reassign the subscription explicitly.
       await notify(ctx, [user.user_id], "upgrade", "تم تسجيل استرداد — راجع اشتراك المؤسسة", `${r.org_name} لا يزال على ${org.plan_name ?? "خطته"} حتى تغيّره يدوياً`);
     }
@@ -582,6 +602,7 @@ export const devAssignPlan = mutation({
       plan: plan.tier === "FREE" ? "FREE" : "LICENSE", plan_id: plan.id, plan_name: plan.name, plan_tier: plan.tier === "FREE" ? null : plan.tier,
       modules: plan.modules ?? MODULES, max_employees: plan.max_employees, max_distributors: plan.max_distributors ?? null, max_customers: plan.max_customers ?? null,
       status: "ACTIVE", expires_at: new Date(Date.now() + a.days * 86400000).toISOString(), grace_until: null,
+      limits: plan.limits ?? {}, started_at: nowIso(), paid_price: 0, period_days: a.days,
     };
     await ctx.db.patch(org._id, after as any);
     await audit(ctx, user, "subscription.assign", { org_id: org.id, before: { plan_name: org.plan_name, expires_at: org.expires_at, status: org.status }, after, note: a.note });

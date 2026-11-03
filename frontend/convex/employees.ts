@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
   OWNER,
+  audit,
   STAFF,
   clean,
   cleanAll,
@@ -37,6 +38,8 @@ export const invite = mutation({
   handler: async (ctx, { token, name, employee_type }) => {
     const user = await require(ctx, token, OWNER);
     if (!["FIELD_AGENT", "ACCOUNTANT"].includes(employee_type)) throw new Error("نوع غير صالح");
+    name = name.trim();
+    if (name.length < 2 || name.length > 60) throw new Error("أدخل اسم الموظف (2–60 حرفاً)");
     const org = await orgById(ctx, user.org_id);
     const employees = (await ctx.db.query("users").withIndex("by_org", (q) => q.eq("org_id", user.org_id!)).collect()).filter(
       (u) => u.role === "EMPLOYEE",
@@ -81,6 +84,28 @@ export const deleteInvite = mutation({
   },
 });
 
+// PATCH /api/employees/:id/name (OWNER) — only the owner sets/edits an employee's (or pending invite's) name.
+export const rename = mutation({
+  args: { token: v.string(), id: v.string(), name: v.string() },
+  handler: async (ctx, { token, id, name }) => {
+    const user = await require(ctx, token, OWNER);
+    const n = name.trim();
+    if (n.length < 2 || n.length > 60) throw new Error("أدخل اسماً صحيحاً (2–60 حرفاً)");
+    const emp: any = await ctx.db.query("users").withIndex("by_user_id", (q) => q.eq("user_id", id)).unique();
+    if (emp && emp.org_id === user.org_id && emp.role === "EMPLOYEE") {
+      await ctx.db.patch(emp._id, { name: n, name_locked: true });
+      await audit(ctx, user, "employee.rename", { org_id: user.org_id!, target: id, before: { name: emp.name }, after: { name: n } });
+      return { ok: true, name: n };
+    }
+    const inv: any = await ctx.db.query("invitations").withIndex("by_biz_id", (q) => q.eq("id", id)).unique();
+    if (inv && inv.org_id === user.org_id && !inv.used) {
+      await ctx.db.patch(inv._id, { name: n });
+      return { ok: true, name: n };
+    }
+    throw new Error("الموظف غير موجود");
+  },
+});
+
 // DELETE /api/employees/{uid}  (OWNER) — unlink employee + clear their stock.
 export const remove = mutation({
   args: { token: v.string(), user_id: v.string() },
@@ -108,7 +133,8 @@ export const activate = mutation({
       if (!inv) throw new Error("رمز الموظف غير صالح أو مستخدم");
       const org = await orgById(ctx, inv.org_id);
       if (!org || org.status !== "ACTIVE") throw new Error("اشتراك المؤسسة غير فعال");
-      await ctx.db.patch(user._id, { role: "EMPLOYEE", employee_type: inv.employee_type, org_id: inv.org_id, name: inv.name || user.name });
+      // The name the owner typed on the invite is the employee's official name (they can't set their own).
+      await ctx.db.patch(user._id, { role: "EMPLOYEE", employee_type: inv.employee_type, org_id: inv.org_id, name: inv.name || user.name, name_locked: true });
       await ctx.db.patch(inv._id, { used: true, user_id: user.user_id, used_at: nowIso() });
     } else {
       const lic = (await ctx.db.query("licenses").withIndex("by_code", (q) => q.eq("code", code)).collect()).find((l) => l.status === "READY");

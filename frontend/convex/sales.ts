@@ -14,6 +14,8 @@ import {
   logMovement,
   newId,
   allocDocNo,
+  assertLimit,
+  orgById,
   nowIso,
   orgCustomer,
   orgMoney,
@@ -125,6 +127,8 @@ export const create = mutation({
     if (a.lat !== undefined && a.lat !== null && (cust.lat === undefined || cust.lat === null))
       await ctx.db.patch(cust._id, { lat: a.lat, lng: a.lng ?? null });
 
+    // Plan limit on invoices per month (backend-enforced).
+    await assertLimit(ctx, await orgById(ctx, user.org_id!), "invoices_month", "الفواتير الشهرية");
     const doc = {
       id: a.id || newId(),
       ...geoFields(a),

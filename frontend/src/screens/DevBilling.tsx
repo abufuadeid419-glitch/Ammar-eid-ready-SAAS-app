@@ -12,6 +12,8 @@ import { queryClient } from "@/src/query-client";
 import { pickReceiptImage } from "@/src/utils/receipt";
 import { radius, spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Card, Empty, Field, Header, HeaderIconBtn, Loading, Segments, Sheet, Stat, T, useToast } from "@/src/ui";
+import { DevCatalog, DevLedger, DevSubscriptions, PlanExtras, extrasBody } from "@/src/components/DevSaaS";
+import { ConfirmDelete } from "@/src/components/DevDelete";
 
 const PLAN_STATUS: Record<string, [string, "success" | "warning" | "brand" | "error"]> = {
   published: ["منشورة", "success"], changed: ["تعديلات غير منشورة", "warning"], draft: ["مسودة", "brand"], archived: ["مؤرشفة", "error"],
@@ -28,7 +30,7 @@ export default function DevBilling() {
   const { colors } = useTheme();
   const toast = useToast();
   const bottom = useBottomChrome();
-  const [tab, setTab] = useState<"requests" | "plans" | "methods" | "audit">("requests");
+  const [tab, setTab] = useState<"requests" | "plans" | "methods" | "subs" | "ledger" | "catalog" | "audit">("requests");
   const [filter, setFilter] = useState<string>("open");
   const reqs = useApi<any[]>("/upgrade-requests");
   const plans = useApi<any[]>("/plans");
@@ -52,6 +54,7 @@ export default function DevBilling() {
   const archiveMethod = useMutate<any>("DELETE", (b) => `/dev/payment-methods/${b.id}`, "تمت أرشفة طريقة الدفع", () => setMethod(null));
   const saveSettings = useMutate<any>("PUT", "/dev/billing/settings", "تم حفظ الإعدادات");
   const [qrBusy, setQrBusy] = useState(false);
+  const [del, setDel] = useState<any>(null);
 
   const OPEN = ["PENDING", "UNDER_REVIEW", "NEEDS_INFO"];
   const rows = (reqs.data ?? []).filter((r) => (filter === "open" ? OPEN.includes(r.status) : filter === "all" ? true : r.status === filter));
@@ -61,6 +64,7 @@ export default function DevBilling() {
     promo_until: p.promo_until || null, currency: p.currency || "USD", days: +p.days || 30, trial_days: +p.trial_days || 0, grace_days: +p.grace_days || 0,
     sort_order: +p.sort_order || 10, recommended: !!p.recommended, active: p.active, ...fromPlanControls(p),
     features: String(p.features ?? "").split("\n").map((s: string) => s.trim()).filter(Boolean),
+    ...extrasBody(p), modules: p.modules,
   });
   const saveDraft = () => {
     if (!plan.name.trim()) return toast("أدخل اسم الخطة", "error");
@@ -98,7 +102,7 @@ export default function DevBilling() {
         subtitle={`${stats.data?.open ?? 0} طلب مفتوح · ${stats.data?.expiring ?? 0} تنتهي خلال 7 أيام`}
         right={<>{tab === "plans" && <HeaderIconBtn testID="add-plan-button" icon="add" onPress={() => setPlan(blankPlan)} />}{tab === "methods" && <HeaderIconBtn testID="add-method-button" icon="add" onPress={() => setMethod(blankMethod)} />}<AccountButton /></>}
       />
-      <Segments value={tab} onChange={setTab} options={[{ key: "requests", label: "طلبات الدفع" }, { key: "plans", label: "الخطط" }, { key: "methods", label: "طرق الدفع" }, { key: "audit", label: "السجل" }]} />
+      <Segments value={tab} onChange={setTab} options={[{ key: "requests", label: "طلبات الدفع" }, { key: "subs", label: "الاشتراكات" }, { key: "plans", label: "الخطط" }, { key: "methods", label: "طرق الدفع" }, { key: "ledger", label: "السجل المالي" }, { key: "catalog", label: "المميزات والموارد" }, { key: "audit", label: "سجل التدقيق" }]} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md, paddingBottom: bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={reqs.isRefetching} onRefresh={() => queryClient.invalidateQueries()} tintColor={colors.brandPrimary} />}>
         {tab === "requests" && (
           <>
@@ -161,6 +165,9 @@ export default function DevBilling() {
             )}
           </>
         )}
+        {tab === "subs" && <DevSubscriptions />}
+        {tab === "ledger" && <DevLedger />}
+        {tab === "catalog" && <DevCatalog />}
         {tab === "audit" && (auditQ.isLoading ? <Loading /> : !auditQ.data?.length ? <Empty icon="list-outline" text="لا توجد سجلات" /> : auditQ.data.map((a, i) => (
           <Card key={i} testID={`audit-row-${i}`} style={{ gap: 2 }}>
             <T v="label">{a.action}</T>
@@ -191,6 +198,7 @@ export default function DevBilling() {
             </View>
             <RequestDetails r={sel} />
             {sel.has_receipt ? <ReceiptViewer id={sel.id} testID="review-receipt-button" /> : <T v="caption" color="warning">لا يوجد إيصال مرفق</T>}
+            <Btn testID="delete-request-button" small variant="ghost" icon="trash-outline" title="حذف الطلب وإيصاله نهائياً" onPress={() => setDel({ testID: "req", title: "حذف طلب الدفع", body: "سيُحذف الطلب وصورة الإيصال نهائياً. الاشتراك المفعّل (إن وُجد) والسجل المالي لا يتأثران.", path: `/dev/upgrade-requests/${sel.id}/delete`, done: () => setSel(null) })} />
             {(sel.history ?? []).map((h: any, i: number) => <T key={i} v="caption">• {REQ_STATUS[h.status]?.t ?? h.status} · {h.by} · {fmtDate(h.at)}{h.note ? ` · ${h.note}` : ""}</T>)}
             <Field testID="review-note-input" label="السبب / الملاحظة (مطلوب للرفض وطلب المعلومات)" multiline value={note} onChangeText={setNote} />
           </>
@@ -205,6 +213,7 @@ export default function DevBilling() {
               {plan.id && plan.status !== "archived" && <Btn testID="publish-plan-button" style={{ flex: 1 }} title="نشر" icon="cloud-upload-outline" loading={publish.isPending} onPress={() => publish.mutate({ id: plan.id })} />}
             </View>
             {plan.id && <Btn testID="archive-plan-button" small variant="ghost" title={plan.status === "archived" ? "إلغاء الأرشفة" : "أرشفة الخطة"} onPress={() => archive.mutate({ id: plan.id, restore: plan.status === "archived" })} />}
+            {plan.id && <Btn testID="delete-plan-button" small variant="danger" icon="trash-outline" title="حذف الخطة نهائياً" onPress={() => setDel({ testID: "plan", title: "حذف الخطة نهائياً", body: `سيتم حذف "${plan.name}" وكل إصداراتها. المؤسسات المشتركة عليها تحتفظ بحدودها الحالية حتى انتهاء اشتراكها. للإخفاء المؤقت استخدم الأرشفة.`, path: `/dev/plans/${plan.id}/delete`, done: () => setPlan(null) })} />}
           </View>
         )}
       >
@@ -214,6 +223,7 @@ export default function DevBilling() {
             <Field testID="plan-name-input" label="اسم الخطة" value={plan.name} onChangeText={(v) => setPlan({ ...plan, name: v })} />
             <Field testID="plan-description-input" label="الوصف" multiline value={plan.description} onChangeText={(v) => setPlan({ ...plan, description: v })} />
             <PlanControls testPrefix="plan" tiers={["FREE", "PRO", "VIP"]} value={plan} onChange={(c) => setPlan({ ...plan, ...c })} />
+            <PlanExtras plan={plan} setPlan={setPlan} />
             {plan.tier !== "FREE" && (
               <>
                 <View style={{ flexDirection: "row", gap: spacing.md }}>
@@ -295,6 +305,7 @@ export default function DevBilling() {
           </>
         )}
       </Sheet>
+      <ConfirmDelete c={del} onClose={() => setDel(null)} />
     </View>
   );
 }

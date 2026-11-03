@@ -36,3 +36,15 @@
 ## Iteration 2026-11 (f) — Unified print/send popup for all documents
 - src/components/DocDoneSheet.tsx: global showDocDone(kind, doc) + DocDoneHost at app root (same design as the sale popup): sale, sales return, collection (all entry points), payment voucher, warehouse return, purchase, purchase return, supplier payment. Pending docs printable (final numbers), swaps to synced server copy.
 - receipts.purchaseReceipt added; purchases now get purchase_no (PUR-xxxxx) + created_by_name.
+
+## Iteration 2026-11 (g) — SaaS subscriptions restructure (on top of existing billing, no parallel system)
+- Plans Free/Pro/VIP dynamic (draft→publish), now with `limits` (catalog resources e.g. products, invoices_month, custom) and `org_ids` (private/custom plans). VIP plan created+published (60 USD/mo, 600/yr).
+- convex/subscription.ts: catalog (app_settings.billing_catalog: features+resources, dev-only edit), GET /subscription (owner: plan, status, start/end, meters used/max/%, last request), GET /subscription/quote (price, upgrade credit/proration, due, yearly saving), dev ledger, dev subscriptions list, dev actions freeze/unfreeze/suspend/reactivate/extend (audited + owner notified).
+- billing.ts: proration credit on upgrade to higher tier (unused share of paid_price), transfer_date, duplicate payment_ref blocked at submit + approve, billing_ledger rows on approve/renew/refund, org gets limits/started_at/paid_price/period_days.
+- Backend enforcement: products & monthly invoices (assertLimit), customers/employees (existing).
+- UI: owner SubscriptionOverview + UsageAlerts (plans page + dashboard), yearly saving, current-plan badge, quote in checkout, transfer date; Dev tabs: الاشتراكات, السجل المالي, المميزات والموارد, plan editor PlanExtras.
+
+## Iteration 2026-11 (h) — Owner-defined employee names + SaaS fixes
+- Invite requires name (2–60). Activation (EMP- code / QR) sets user.name = invite name + name_locked; /auth/name rejects employees ("اسم الموظف يحدده المالك فقط"). Login/homeFor never ask unactivated users or employees for a name (owners still asked after activating).
+- PATCH /api/employees/:id/name (OWNER, audited) edits employee or pending-invite name; UI rename icon + sheet in team list.
+- SaaS fixes: require(..., {billing:true}) lets frozen/suspended/expired owners view plan & pay; promo price must be < regular price; yearly saving uses 12 months.

@@ -217,7 +217,8 @@ function PhoneAuth() {
     );
   }
 
-  if (user && !user.name) {
+  // Only owners/developers type their own name; an employee gets the name the owner put on the invite.
+  if (user && !user.name && user.role && user.role !== "EMPLOYEE") {
     return screen(
       "name-step",
       <>
