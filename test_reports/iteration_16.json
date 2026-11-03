@@ -1,0 +1,38 @@
+{
+  "summary": "I tested Developer Admin security end-to-end at 390x844 against Convex fearless-ostrich-878. Backend sanity: test_dev_security.py passed 11/11. Frontend 2FA gate: I seeded a pre-2FA dev session for +963900000009 and injected it. The app sent it to the /login set-password step (has_password=false), then to /dev-auth (not the dev panel). totp-setup-begin showed the QR (svg) and a 32-character base32 secret. A TOTP code computed in Python was accepted, and recovery-codes-card showed 10 codes. recovery-continue-button had aria-disabled=true until recovery-saved-toggle was pressed. Continue opened /dev (dev-home-screen). The header and account sheet showed no phone and no name ('Sec Test' absent). The sheet showed 'حساب المطوّر', and the support WhatsApp button is hidden for the developer. Security tab: the current device was listed as '(هذا الجهاز)', recovery-left-badge showed 10, and access-log-card listed events. New-device approval worked: second context logged in with password via API, entered TOTP at dev-2fa-code-input, and got dev-auth-pending with a 6-digit code. In the first context the pending-device card appeared. approve-code-input + approve-device-button switched the second context to the dev panel automatically within 1.8s. Deny via API marked the device denied and also deleted that pending session (401). Regenerating with a fresh TOTP returned 10 new codes, and the badge stayed at 10. revoke-everything-button -> confirm-revoke-everything logged out the current context: /login, localStorage token cleared, and both dev tokens return 401. Support: the owner's account-support-whatsapp opened https://wa.me/963947744162. contact-whatsapp-button on /upgrade opened wa.me/963947744162?text=... No other phone number is shown on /upgrade. /api/settings/payment returns whatsapp +963947744162, and devSettingsPayment forces SUPPORT_WHATSAPP server-side. Regression: owner loads /owner and agent loads /dist, with no page errors. dev_sec_env.sh restore was RUN at the end: DEVELOPER_PHONES_HASH is back to 1 entry, test devs are purged, and password login for +963900000009 now fails. Deprecated packages: none of expo-av, expo-barcode-scanner or expo-background-fetch are used. However, expo-router/unstable-native-tabs is deprecated (console warning).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/dev/sec/logs", "issue": "This query is not filtered by user_id. It returns the global last 100 dev_access_logs (convex/devSec.ts:285 uses withIndex('by_at') with no user filter). With more than one hash in DEVELOPER_PHONES_HASH, one developer sees another's events, and test accounts' events show up in the owner's log (observed: 'pytest' device events from user_sectest_8 appeared in user_sectest_9's log)."},
+      {"endpoint": "POST /api/dev/sec/verify", "issue": "The lockout counter is per account. Anyone who knows the password can send 5 wrong codes and lock the real owner out of 2FA for 15 minutes (DoS). This is an accepted trade-off, so it is just noted."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dev home / Dev security header", "issues": ["At 390px the header subtitles are cut off ('حساب محمي بالتحقق بخطو...', 'التحقق بخطوتين والأجهزة ال...')."]}
+    ],
+    "react_native_issues": [
+      {"component": "NativeTabs import", "issue": "The app imports from 'expo-router/unstable-native-tabs', which is deprecated. The runtime warns: 'Use expo-router/native-tabs instead'. Reference: /app/frontend/src/RoleTabs.tsx:2"}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_dev_security.py", "/app/test_reports/pytest/dev_sec_iter10.xml"],
+  "action_items": [
+    "Change import in src/RoleTabs.tsx:2 from 'expo-router/unstable-native-tabs' to 'expo-router/native-tabs' (export exists in installed expo-router).",
+    "Optional: filter devSec.logs by user.user_id so each developer only sees own events.",
+    "Optional: shorten dev header subtitles to avoid truncation at 390px."
+  ],
+  "critical_code_review_comments": [
+    "Security design is solid: AES-256-GCM sealed TOTP secret (TOTP_MASTER_KEY env), HMAC'd recovery codes, ±1-step TOTP with monotonic last_step replay protection, device secret stored only as a hash, approve-code brute force capped at 3 tries, and a generic otpauth label.",
+    "On web, the dev_device_secret is kept in plain localStorage because secureGet falls back to getItem, so an XSS bug could steal it. This is acceptable for the web preview.",
+    "/auth/me still returns the developer's stored name to the developer's own session. The UI hides it, which is acceptable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Test dev +963900000009 seeded via devSec:testSeed (password Sec12345test). It was PURGED via dev_sec_env.sh restore. DEVELOPER_PHONES_HASH restored to its original single entry.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "A verified dev session token still works in a fresh browser context because verification is bound to the server session. Use page.context.browser.new_context() for a second device. TOTP replay protection needs a new 30s step for each code. Before tapping buttons near the bottom of dev-security-screen, scroll them to centre with el.scrollIntoView({block:'center'}), otherwise the floating tab bar intercepts the tap. Close the guided tour with tour-skip-button. ALWAYS run dev_sec_env.sh restore at the end.",
+  "rca_of_issue": ""
+}

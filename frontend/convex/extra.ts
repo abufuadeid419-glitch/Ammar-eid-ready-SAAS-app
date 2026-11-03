@@ -28,6 +28,9 @@ import {
   TIERS,
   cleanModules,
   assertNotDeleted,
+  devSessionOk,
+  getSession,
+  SUPPORT_WHATSAPP,
 } from "./lib";
 
 const PROFILE_FIELDS = ["name", "phone", "email", "address", "tax_no", "cr_no", "invoice_footer", "phone_country_code"];
@@ -42,7 +45,16 @@ async function enrich(ctx: any, user: any) {
 // ---------------- auth: me / logout / consent / delete account ----------------
 export const me = query({
   args: { token: v.string() },
-  handler: async (ctx, { token }) => enrich(ctx, await getUser(ctx, token)),
+  handler: async (ctx, { token }) => {
+    const user: any = await getUser(ctx, token, { devPending: true });
+    const out = await enrich(ctx, user);
+    if (user.role === "DEVELOPER") {
+      out.dev_mfa = await devSessionOk(ctx, await getSession(ctx, token));
+      // Never echo the developer's personal identifiers back to any screen.
+      delete out.phone; delete out.email;
+    }
+    return out;
+  },
 });
 
 export const logout = mutation({
@@ -57,7 +69,7 @@ export const logout = mutation({
 export const consent = mutation({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
-    const user = await getUser(ctx, token);
+    const user = await getUser(ctx, token, { devPending: true });
     await ctx.db.patch(user._id, { consent_at: nowIso() });
     return enrich(ctx, await ctx.db.get(user._id));
   },
@@ -308,7 +320,8 @@ export const settingsPayment = query({
   handler: async (ctx, { token }) => {
     await getUser(ctx, token);
     const s: any = await ctx.db.query("app_settings").withIndex("by_key", (q) => q.eq("key", "payment")).unique();
-    return { payment_address: s?.payment_address ?? "", whatsapp: s?.whatsapp ?? "", instructions: s?.instructions ?? "" };
+    // Official support line only — never a personal number.
+    return { payment_address: s?.payment_address ?? "", whatsapp: SUPPORT_WHATSAPP, instructions: s?.instructions ?? "" };
   },
 });
 
@@ -568,7 +581,7 @@ export const devSettingsPayment = mutation({
   args: { token: v.string(), payment_address: v.optional(v.string()), whatsapp: v.optional(v.string()), instructions: v.optional(v.string()) },
   handler: async (ctx, a) => {
     await require(ctx, a.token, DEV);
-    const body = { payment_address: a.payment_address ?? "", whatsapp: a.whatsapp ?? "", instructions: a.instructions ?? "" };
+    const body = { payment_address: a.payment_address ?? "", whatsapp: SUPPORT_WHATSAPP, instructions: a.instructions ?? "" };
     const ex = await ctx.db.query("app_settings").withIndex("by_key", (q) => q.eq("key", "payment")).unique();
     if (ex) await ctx.db.patch(ex._id, body); else await ctx.db.insert("app_settings", { key: "payment", ...body });
     return body;

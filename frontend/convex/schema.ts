@@ -51,6 +51,15 @@ export default defineSchema(
       .index("by_token", ["session_token"])
       .index("by_user", ["user_id"]),
 
+    // Developer-only security (2FA secret is AES-GCM encrypted; recovery codes stored as hashes).
+    dev_security: defineTable({ user_id: v.string() }).index("by_user", ["user_id"]),
+    // Developer trusted devices (only sha256 of the device secret is stored).
+    dev_devices: defineTable({ id: v.string(), user_id: v.string(), device_hash: v.string(), status: v.string() })
+      .index("by_biz_id", ["id"])
+      .index("by_user", ["user_id"])
+      .index("by_hash", ["device_hash"]),
+    dev_access_logs: defineTable({ event: v.string(), at: v.number() }).index("by_at", ["at"]),
+
     // Password credentials live in their own table so they can never leak through user documents.
     user_passwords: defineTable({
       user_id: v.string(),

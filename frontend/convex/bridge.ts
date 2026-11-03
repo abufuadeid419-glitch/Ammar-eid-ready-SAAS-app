@@ -7,7 +7,8 @@ import { internalMutation } from "./_generated/server";
 // mirrors the document into Convex through these secret-guarded mutations so the
 // app can read the four ported domains (routes, vouchers, purchases,
 // notifications) + the live agent map straight from Convex in real time.
-const SECRET = "smartsystem-migrate-2026";
+// Shared secret lives only in the Convex env (never in code). Unset = every call is refused.
+const ok = (secret: string) => !!process.env.CONVEX_BRIDGE_SECRET && secret === process.env.CONVEX_BRIDGE_SECRET;
 
 const strip = (doc: any) => {
   const { _id, _creationTime, ...rest } = doc ?? {};
@@ -18,7 +19,7 @@ const strip = (doc: any) => {
 export const upsert = internalMutation({
   args: { secret: v.string(), table: v.string(), keyField: v.string(), doc: v.any() },
   handler: async (ctx, { secret, table, keyField, doc }) => {
-    if (secret !== SECRET) throw new Error("bad secret");
+    if (!ok(secret)) throw new Error("bad secret");
     const rest = strip(doc);
     const keyVal = rest[keyField];
     const existing = await ctx.db
@@ -35,7 +36,7 @@ export const upsert = internalMutation({
 export const insertRow = internalMutation({
   args: { secret: v.string(), table: v.string(), doc: v.any() },
   handler: async (ctx, { secret, table, doc }) => {
-    if (secret !== SECRET) throw new Error("bad secret");
+    if (!ok(secret)) throw new Error("bad secret");
     await ctx.db.insert(table as any, strip(doc));
     return { ok: true };
   },
@@ -45,7 +46,7 @@ export const insertRow = internalMutation({
 export const removeByKey = internalMutation({
   args: { secret: v.string(), table: v.string(), keyField: v.string(), value: v.any() },
   handler: async (ctx, { secret, table, keyField, value }) => {
-    if (secret !== SECRET) throw new Error("bad secret");
+    if (!ok(secret)) throw new Error("bad secret");
     const existing = await ctx.db
       .query(table as any)
       .filter((q: any) => q.eq(q.field(keyField), value))

@@ -5,7 +5,8 @@ import pytest, requests
 
 SITE = os.environ.get("EXPO_PUBLIC_CONVEX_SITE_URL") or open("/app/frontend/.env").read().split("EXPO_PUBLIC_CONVEX_SITE_URL=")[1].split()[0]
 B = SITE.rstrip("/") + "/api"
-DEV, OWNER, AGENT = "test_token_dev", "test_token_owner", "test_token_agent"
+from devauth_helper import verified_dev_token
+DEV, OWNER, AGENT = verified_dev_token(), "test_token_owner", "test_token_agent"
 ORG = "org_test_1"
 PRO_ID = "2ad56e48e4fa42228284ee9185cce090"
 SHAM = "90e09c39e8ba4d089d6e1eba106f40ee"

@@ -22,6 +22,7 @@ export type User = {
   org: any;
   consent_at?: string;
   has_password?: boolean;
+  dev_mfa?: boolean;
 };
 
 type Conflict = { phone: string; code?: string; password?: string; reset?: boolean };
@@ -243,7 +244,7 @@ export function homeFor(u: User | null | undefined): string {
   if (!u || u.has_password === false || (!u.name && !!u.role && u.role !== "EMPLOYEE")) return "login";
   if (!u.consent_at) return "consent";
   if (!u.role) return "activate";
-  if (u.role === "DEVELOPER") return "dev";
+  if (u.role === "DEVELOPER") return u.dev_mfa ? "dev" : "dev-auth";
   const org = u.org;
   // An expired trial falls back to the Free plan (not blocked); expired paid licences block.
   if (!org || org.status !== "ACTIVE" || (org.plan !== "TRIAL" && new Date(org.expires_at) < new Date())) return "blocked";

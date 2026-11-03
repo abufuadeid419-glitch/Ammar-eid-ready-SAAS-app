@@ -1,12 +1,11 @@
 import { useRouter } from "expo-router";
-import { Linking, View } from "react-native";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/auth";
+import { SUPPORT_WHATSAPP, openSupport } from "@/src/support";
 import { spacing, useTheme } from "@/src/theme";
 import { Btn, Empty, T } from "@/src/ui";
-
-const SUPPORT_WHATSAPP = "+963947744162";
 
 export default function Blocked() {
   const { user, logout, refresh } = useAuth();
@@ -23,8 +22,9 @@ export default function Blocked() {
       <Empty icon={deleted ? "trash-outline" : "lock-closed-outline"} text={text} />
       <T v="caption" style={{ textAlign: "center" }}>{user?.org?.name}</T>
       {deleted && <T testID="blocked-support-number" v="h2" style={{ textAlign: "center", writingDirection: "ltr" }}>{SUPPORT_WHATSAPP}</T>}
+      {!deleted && <Btn testID="blocked-support-button" variant="secondary" title="التواصل مع فريق الدعم (واتساب)" icon="logo-whatsapp" onPress={() => openSupport()} />}
       {deleted ? (
-        <Btn testID="blocked-whatsapp-button" title="تواصل مع الدعم عبر واتساب" icon="logo-whatsapp" onPress={() => Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP.replace("+", "")}`)} />
+        <Btn testID="blocked-whatsapp-button" title="تواصل مع الدعم عبر واتساب" icon="logo-whatsapp" onPress={() => openSupport()} />
       ) : (
         user?.role === "OWNER" && <Btn testID="blocked-upgrade-button" title="تجديد / ترقية الخطة" icon="rocket-outline" onPress={() => router.push("/upgrade")} />
       )}

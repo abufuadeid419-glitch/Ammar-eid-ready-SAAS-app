@@ -2,7 +2,8 @@ import { v } from "convex/values";
 
 import { action, internalMutation, internalQuery, mutation } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import { clean, getUser, newId, nowIso, orgById } from "./lib";
+import { clean, getUser, isDevPhone, newId, nowIso, orgById } from "./lib";
+import { DEV_SESSION_MS, devLog } from "./devSec";
 
 const PHONE_RE = /^\+[1-9]\d{7,14}$/;
 const OTP_MAX_PER_HOUR = 5;
@@ -149,17 +150,22 @@ export const pwResult = internalMutation({
     const user = await ctx.db.query("users").withIndex("by_phone", (q) => q.eq("phone", phone)).unique();
     const rec = user ? await ctx.db.query("user_passwords").withIndex("by_user", (q) => q.eq("user_id", user.user_id)).unique() : null;
     if (!user || !rec) return { error: "رقم الهاتف أو كلمة المرور غير صحيحة" };
-    if (!ok) return await recordFail(ctx, rec);
-    if (!(await takeOverDevice(ctx, user.user_id, !!force))) return { conflict: true };
+    const dev = await isDevPhone(phone);
+    if (dev) await devLog(ctx, ok ? "password.ok" : "password.fail", ok, { user_id: user.user_id });
+    if (!ok) return await recordFail(ctx, rec, dev);
+    // Developer: several trusted devices may hold sessions (new ones still need 2FA + approval).
+    if (!dev && !(await takeOverDevice(ctx, user.user_id, !!force))) return { conflict: true };
     await ctx.db.patch(rec._id, { failed: 0, locked_until_ms: 0 });
     return await openSession(ctx, phone, session_token, false);
   },
 });
 
-async function recordFail(ctx: any, rec: any) {
+async function recordFail(ctx: any, rec: any, dev = false) {
   const failed = (rec.failed ?? 0) + 1;
   if (failed >= PW_MAX_FAILS) {
-    await ctx.db.patch(rec._id, { failed: 0, locked_until_ms: Date.now() + PW_LOCK_MS });
+    // Developer accounts lock for 1 hour (staff: 15 min).
+    await ctx.db.patch(rec._id, { failed: 0, locked_until_ms: Date.now() + (dev ? 4 : 1) * PW_LOCK_MS });
+    if (dev) await devLog(ctx, "password.locked", false, { user_id: rec.user_id });
     return { error: "محاولات خاطئة كثيرة، تم إيقاف الدخول بكلمة المرور 15 دقيقة. يمكنك استخدام \"نسيت كلمة المرور\"" };
   }
   await ctx.db.patch(rec._id, { failed });
@@ -170,7 +176,7 @@ async function recordFail(ctx: any, rec: any) {
 export const pwRecordByToken = internalQuery({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
-    const user: any = await getUser(ctx, token);
+    const user: any = await getUser(ctx, token, { devPending: true });
     const rec = await ctx.db.query("user_passwords").withIndex("by_user", (q) => q.eq("user_id", user.user_id)).unique();
     return rec ? { user_id: user.user_id, hash: rec.hash, salt: rec.salt, locked_until_ms: rec.locked_until_ms ?? 0 } : null;
   },
@@ -188,7 +194,7 @@ export const pwFail = internalMutation({
 export const pwStore = internalMutation({
   args: { token: v.string(), salt: v.string(), hash: v.string(), verified: v.optional(v.boolean()) },
   handler: async (ctx, { token, salt, hash, verified }) => {
-    const user: any = await getUser(ctx, token);
+    const user: any = await getUser(ctx, token, { devPending: true });
     const sess = await ctx.db.query("user_sessions").withIndex("by_token", (q) => q.eq("session_token", token)).unique();
     const rec = await ctx.db.query("user_passwords").withIndex("by_user", (q) => q.eq("user_id", user.user_id)).unique();
     // `verified` = the current password was just confirmed by pw.changePassword (internal only).
@@ -245,18 +251,10 @@ export const checkOtp = internalMutation({
     // One device per account (like WhatsApp): an active session elsewhere needs explicit consent;
     // the code is NOT consumed so the client can retry with force=true.
     const existing = await ctx.db.query("users").withIndex("by_phone", (q) => q.eq("phone", phone)).unique();
-    if (existing && !(await takeOverDevice(ctx, existing.user_id, !!force))) return { conflict: true };
+    if (existing && !(await isDevPhone(phone)) && !(await takeOverDevice(ctx, existing.user_id, !!force))) return { conflict: true };
     return await openSession(ctx, phone, session_token, true);
   },
 });
-
-// Hashed-phone comparison for developer accounts.
-// Phones are never stored or compared in plain text: sha256(pepper:phone).
-async function hashPhone(phone: string) {
-  const data = new TextEncoder().encode(`${process.env.OTP_PEPPER ?? ""}:${phone}`);
-  const d = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(d)).map((x) => x.toString(16).padStart(2, "0")).join("");
-}
 
 // Find-or-create the user by verified phone and open a 30-day session.
 async function openSession(ctx: any, phone: string, session_token: string, viaOtp: boolean) {
@@ -265,13 +263,14 @@ async function openSession(ctx: any, phone: string, session_token: string, viaOt
     // Developer accounts are identified by HASHED phone, listed in the Convex
     // deployment env var DEVELOPER_PHONES_HASH (comma-separated sha256(pepper:phone)
     // hex). The plaintext phone is NEVER stored in env or code.
-    const devHashes = (process.env.DEVELOPER_PHONES_HASH ?? "").split(",").map((p) => p.trim().toLowerCase()).filter(Boolean);
-    const isDev = devHashes.length > 0 && devHashes.includes((await hashPhone(phone)).toLowerCase());
+    const isDev = await isDevPhone(phone);
     const existing = await ctx.db.query("users").withIndex("by_phone", (q: any) => q.eq("phone", phone)).unique();
     let user_id: string;
     if (existing) {
       user_id = existing.user_id;
       if (isDev && existing.role !== "DEVELOPER") await ctx.db.patch(existing._id, { role: "DEVELOPER", employee_type: null, org_id: null });
+      // DEVELOPER can never be kept or gained by anyone not in the env allow-list.
+      if (!isDev && existing.role === "DEVELOPER") await ctx.db.patch(existing._id, { role: null, employee_type: null, org_id: null });
     } else {
       user_id = `user_${newId().slice(0, 12)}`;
       // `email` doubles as the display identifier across the app; for phone accounts it holds the phone.
@@ -281,13 +280,15 @@ async function openSession(ctx: any, phone: string, session_token: string, viaOt
     for (const o of await ctx.db.query("otp_requests").withIndex("by_phone", (q: any) => q.eq("phone", phone)).collect()) await ctx.db.delete(o._id);
     await ctx.db.insert("user_sessions", {
       session_token, user_id, device_id: newId(), last_seen_at: nowIso(),
-      expires_at: new Date(Date.now() + 30 * 86400000).toISOString(), created_at: nowIso(),
+      // Developer sessions are short and start unverified (2FA + trusted device still required).
+      expires_at: new Date(Date.now() + (isDev ? DEV_SESSION_MS : 30 * 86400000)).toISOString(), created_at: nowIso(),
       ...(viaOtp ? { pw_reset_until: Date.now() + 15 * 60 * 1000 } : {}),
     });
     const user: any = await ctx.db.query("users").withIndex("by_user_id", (q: any) => q.eq("user_id", user_id)).unique();
     const pw = await ctx.db.query("user_passwords").withIndex("by_user", (q: any) => q.eq("user_id", user_id)).unique();
     const out: any = { ...clean(user), has_password: !!pw, org: null };
     if (user.org_id) out.org = clean(await orgById(ctx, user.org_id));
+    if (isDev) { out.dev_mfa = false; delete out.phone; delete out.email; }
     return { session_token, user: out };
   }
 }
@@ -296,7 +297,7 @@ async function openSession(ctx: any, phone: string, session_token: string, viaOt
 export const setName = mutation({
   args: { token: v.string(), name: v.string() },
   handler: async (ctx, { token, name }) => {
-    const user: any = await getUser(ctx, token);
+    const user: any = await getUser(ctx, token, { devPending: true });
     // Employee names are set by the owner only (invite / employees screen).
     if (user.role === "EMPLOYEE" || user.name_locked) throw new Error("اسم الموظف يحدده المالك فقط");
     const n = name.trim();
@@ -317,7 +318,6 @@ export const seedTestAccounts = internalMutation({
       await ctx.db.insert("organizations", { id: org_id, name: "TEST مؤسسة الاختبار", owner_id: "user_test_owner", plan: "LICENSE", status: "ACTIVE", max_employees: 15, expires_at: new Date(Date.now() + 365 * 86400000).toISOString(), created_at: nowIso() } as any);
     }
     const people = [
-      ["user_test_dev", "+963900000001", "مطور الاختبار", "DEVELOPER", null, null, "test_token_dev"],
       ["user_test_owner", "+963900000002", "مالك الاختبار", "OWNER", null, org_id, "test_token_owner"],
       ["user_test_acct", "+963900000003", "محاسب الاختبار", "EMPLOYEE", "ACCOUNTANT", org_id, "test_token_acct"],
       ["user_test_agent", "+963900000004", "موزع الاختبار", "EMPLOYEE", "FIELD_AGENT", org_id, "test_token_agent"],
@@ -331,6 +331,20 @@ export const seedTestAccounts = internalMutation({
       if (!s) await ctx.db.insert("user_sessions", { session_token: token, user_id, expires_at: new Date(Date.now() + 365 * 86400000).toISOString(), created_at: nowIso() });
     }
     return { ok: true };
+  },
+});
+
+// Internal (CLI only, one-off): permanently remove the legacy fixed-token test developer account.
+export const purgeTestDev = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const u = await ctx.db.query("users").withIndex("by_user_id", (q) => q.eq("user_id", "user_test_dev")).unique();
+    for (const s of await ctx.db.query("user_sessions").withIndex("by_user", (q) => q.eq("user_id", "user_test_dev")).collect()) await ctx.db.delete(s._id);
+    for (const p of await ctx.db.query("user_passwords").withIndex("by_user", (q) => q.eq("user_id", "user_test_dev")).collect()) await ctx.db.delete(p._id);
+    const tok = await ctx.db.query("user_sessions").withIndex("by_token", (q) => q.eq("session_token", "test_token_dev")).unique();
+    if (tok) await ctx.db.delete(tok._id);
+    if (u) await ctx.db.delete(u._id);
+    return { removed: !!u };
   },
 });
 

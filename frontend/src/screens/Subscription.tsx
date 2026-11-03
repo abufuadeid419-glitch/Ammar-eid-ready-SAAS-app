@@ -2,12 +2,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Linking, Pressable, RefreshControl, ScrollView, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, fmtDate, money } from "@/src/api";
 import { queryClient } from "@/src/query-client";
 import { useAuth } from "@/src/auth";
+import { openSupport } from "@/src/support";
 import { ReceiptViewer, RequestDetails, StatusBadge } from "@/src/components/Billing";
 import { useApi, useMutate } from "@/src/hooks";
 import { MODULE_LABELS, isPro, planLabel, priceFor, promoOn, tierLabel } from "@/src/pro";
@@ -249,9 +250,7 @@ export default function Subscription() {
             ))
           )}
         </Section>
-        {!!pay.data?.whatsapp && (
-          <Btn testID="contact-whatsapp-button" variant="secondary" icon="logo-whatsapp" title="تواصل مع الدعم" onPress={() => Linking.openURL(`https://wa.me/${pay.data.whatsapp.replace(/[^\d]/g, "")}`)} />
-        )}
+        <Btn testID="contact-whatsapp-button" variant="secondary" icon="logo-whatsapp" title="الدعم: الدفع والاشتراكات ومشاكل التحويل والإيصالات" onPress={() => openSupport("استفسار بخصوص الاشتراك / الدفع")} />
       </ScrollView>
 
       <Sheet

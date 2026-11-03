@@ -2,7 +2,6 @@ import { ReactNode, useState } from "react";
 import { FlatList, RefreshControl, ScrollView, View } from "react-native";
 
 import { fmtDate } from "@/src/api";
-import { useAuth } from "@/src/auth";
 import { Monitoring } from "@/src/components/Monitoring";
 import { AccountButton } from "@/src/components/AccountButton";
 import { PlanControls, PlanControlValue, fromPlanControls, toPlanControls } from "@/src/components/PlanControls";
@@ -15,12 +14,11 @@ import { OrgDangerZone } from "@/src/components/DevDelete";
 
 export function DevHome() {
   const { colors } = useTheme();
-  const { user } = useAuth();
   const bottom = useBottomChrome();
   const s = useApi<any>("/dev/stats");
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }} testID="dev-home-screen">
-      <Header title="لوحة المطور" subtitle={user?.email} right={<AccountButton />} />
+      <Header title="لوحة المطور" subtitle="حساب محمي" right={<AccountButton />} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={s.isRefetching} onRefresh={s.refetch} tintColor={colors.brandPrimary} />}>
         {s.isLoading ? <Loading /> : s.error ? <ErrorBox message={(s.error as Error).message} onRetry={s.refetch} /> : (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>

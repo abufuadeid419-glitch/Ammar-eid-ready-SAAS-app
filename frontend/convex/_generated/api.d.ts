@@ -16,6 +16,8 @@ import type * as customers from "../customers.js";
 import type * as dailySms from "../dailySms.js";
 import type * as deliveries from "../deliveries.js";
 import type * as devAdmin from "../devAdmin.js";
+import type * as devSec from "../devSec.js";
+import type * as devSecNode from "../devSecNode.js";
 import type * as edge from "../edge.js";
 import type * as employees from "../employees.js";
 import type * as extra from "../extra.js";
@@ -54,6 +56,8 @@ declare const fullApi: ApiFromModules<{
   dailySms: typeof dailySms;
   deliveries: typeof deliveries;
   devAdmin: typeof devAdmin;
+  devSec: typeof devSec;
+  devSecNode: typeof devSecNode;
   edge: typeof edge;
   employees: typeof employees;
   extra: typeof extra;

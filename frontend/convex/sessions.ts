@@ -12,12 +12,14 @@ export const touch = mutation({
   handler: async (ctx, { token, device, platform }) => {
     const sess = await ctx.db.query("user_sessions").withIndex("by_token", (q) => q.eq("session_token", token)).unique();
     if (!sess) throw new Error("الجلسة غير صالحة");
+    // Developer sessions never slide: they end 24h after 2FA.
+    const isDevSess = !!(sess as any).dev_mfa || !!(sess as any).dev_pending_device || (await ctx.db.query("users").withIndex("by_user_id", (q) => q.eq("user_id", sess.user_id)).unique())?.role === "DEVELOPER";
     await ctx.db.patch(sess._id, {
       device_id: sess.device_id ?? newId(),
       device: device?.slice(0, 60) ?? sess.device,
       platform: platform?.slice(0, 20) ?? sess.platform,
       last_seen_at: nowIso(),
-      expires_at: new Date(Date.now() + SESSION_MS).toISOString(),
+      ...(isDevSess ? {} : { expires_at: new Date(Date.now() + SESSION_MS).toISOString() }),
     });
     return { ok: true };
   },

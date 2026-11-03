@@ -115,7 +115,45 @@ export function clean<T extends Record<string, any>>(doc: T | null): any {
 export const cleanAll = (docs: any[]) => docs.map(clean);
 
 // ---- auth (mirror server.py get_user / require) ----
-export async function getUser(ctx: QueryCtx, token?: string) {
+// Developer identity: sha256(pepper:phone) must be listed in the DEVELOPER_PHONES_HASH env var.
+// The plaintext phone is never stored in code or env; the role alone in the DB is never trusted.
+export async function hashPhone(phone: string) {
+  const data = new TextEncoder().encode(`${process.env.OTP_PEPPER ?? ""}:${phone}`);
+  const d = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(d)).map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+export async function isDevPhone(phone?: string | null) {
+  if (!phone) return false;
+  const list = (process.env.DEVELOPER_PHONES_HASH ?? "").split(",").map((p) => p.trim().toLowerCase()).filter(Boolean);
+  return list.length > 0 && list.includes((await hashPhone(phone)).toLowerCase());
+}
+export const DEV_MFA_MSG = "صلاحية المطوّر تتطلب التحقق بخطوتين من جهاز موثوق";
+// A developer session is fully authorised only after password + 2FA on a trusted (non-revoked) device.
+export async function devSessionOk(ctx: QueryCtx, sess: any) {
+  if (!sess?.dev_mfa || !sess.dev_device) return false;
+  const d: any = await ctx.db.query("dev_devices").withIndex("by_hash", (q: any) => q.eq("device_hash", sess.dev_device)).first();
+  return !!d && d.status === "trusted" && d.user_id === sess.user_id;
+}
+
+export async function getSession(ctx: QueryCtx, token?: string) {
+  if (!token) throw new Error("غير مصرح");
+  const sess = await ctx.db.query("user_sessions").withIndex("by_token", (q) => q.eq("session_token", token)).unique();
+  if (!sess) throw new Error("الجلسة غير صالحة");
+  return sess;
+}
+
+// `devPending: true` = pre-2FA endpoints (profile, password, 2FA screens) a developer may reach before full verification.
+export async function getUser(ctx: QueryCtx, token?: string, opts: { devPending?: boolean } = {}) {
+  const user: any = await getUserRaw(ctx, token);
+  if (user.role === "DEVELOPER") {
+    // Forged/stale DEVELOPER role (phone not in the env allow-list) is treated as no role at all.
+    if (!(await isDevPhone(user.phone))) throw new Error("ليس لديك صلاحية");
+    if (!opts.devPending && !(await devSessionOk(ctx, await getSession(ctx, token)))) throw new Error(DEV_MFA_MSG);
+  }
+  return user;
+}
+
+async function getUserRaw(ctx: QueryCtx, token?: string) {
   if (!token) throw new Error("غير مصرح");
   const sess = await ctx.db
     .query("user_sessions")

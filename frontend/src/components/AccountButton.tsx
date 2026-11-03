@@ -10,6 +10,7 @@ import { Pressable, View } from "react-native";
 
 import { api, fmtDate, roleLabel } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { openSupport } from "@/src/support";
 import { useApi, useMutate } from "@/src/hooks";
 import { ThemeToggle } from "@/src/components/ThemeToggle";
 import { isPro, planLabel } from "@/src/pro";
@@ -95,7 +96,8 @@ export function AccountButton() {
   const [confirmDel, setConfirmDel] = useState(false);
   const toast = useToast();
   const org = user?.org;
-  const initials = (user?.name ?? "؟").trim().slice(0, 1);
+  const dev = user?.role === "DEVELOPER";
+  const initials = dev ? "م" : (user?.name ?? "؟").trim().slice(0, 1);
   return (
     <>
       <View style={{ flexDirection: "row-reverse", gap: spacing.xs, alignItems: "center" }}>
@@ -139,8 +141,9 @@ export function AccountButton() {
         footer={<Btn testID="logout-button" variant="danger" icon="log-out-outline" title="تسجيل الخروج" onPress={() => { setOpen(false); router.replace("/goodbye" as any); }} />}
       >
         <Card style={{ gap: spacing.xs }}>
-          <T v="h2" testID="account-name">{user?.name}</T>
-          <T v="caption">{user?.email}</T>
+          {/* Developer identity is never shown on screen. */}
+          <T v="h2" testID="account-name">{dev ? "حساب المطوّر" : user?.name}</T>
+          {!dev && <T v="caption">{user?.email}</T>}
           <Badge text={roleLabel(user)} />
         </Card>
         <ThemeToggle />
@@ -173,7 +176,8 @@ export function AccountButton() {
           <Row testID="account-terms-link" icon="document-text-outline" title="شروط الاستخدام" onPress={() => { setOpen(false); router.push("/legal?doc=terms"); }} />
           <Row testID="account-privacy-link" icon="shield-outline" title="سياسة الخصوصية" onPress={() => { setOpen(false); router.push("/legal?doc=privacy"); }} />
         </Card>
-        <TrustedDevices open={open} />
+        {!dev && <TrustedDevices open={open} />}
+        {!dev && <Btn testID="account-support-whatsapp" variant="secondary" icon="logo-whatsapp" title="التواصل مع فريق الدعم (واتساب)" onPress={() => openSupport()} />}
         {user?.role !== "DEVELOPER" && (
           confirmDel ? (
             <Card style={{ gap: spacing.sm }}>
