@@ -8,6 +8,7 @@ import { shareReceipt } from "@/src/printDoc";
 import { SupplierStatement, supplierPaymentReceipt, supplierStatementReceipt } from "@/src/receipts";
 import { spacing } from "@/src/theme";
 import { Btn, Card, Empty, Field, IconBtn, Loading, Row, Segments, Sheet, T, useToast } from "@/src/ui";
+import { showDocDone } from "@/src/components/DocDoneSheet";
 
 // Group warehouse purchases + purchase returns by supplier name.
 function group(purchases: any[], returns: any[], payments: any[]): SupplierStatement[] {
@@ -40,7 +41,10 @@ export function SupplierStatementsSheet({ visible, onClose }: { visible: boolean
   const logo = useApi<any>("/org/logo", visible);
   const [sel, setSel] = useState<string | null>(null);
   const [pay, setPay] = useState<{ amount: string; currency: "SYP" | "USD"; notes: string } | null>(null);
-  const savePay = useMutate("POST", "/supplier-payments", "تم تسجيل الدفعة للمورد", () => setPay(null));
+  const savePay = useMutate("POST", "/supplier-payments", undefined, (r) => {
+    setPay(null);
+    showDocDone("supplier_payment", r);
+  });
   const suppliers = useMemo(() => group(purchases.data ?? [], returns.data ?? [], payments.data ?? []), [purchases.data, returns.data, payments.data]);
   const current = suppliers.find((s) => s.name === sel) ?? null;
   const contacts = useApi<any[]>("/suppliers", visible);

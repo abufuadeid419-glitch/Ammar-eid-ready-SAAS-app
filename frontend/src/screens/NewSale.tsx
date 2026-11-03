@@ -4,15 +4,14 @@ import { Pressable, View } from "react-native";
 import { money } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { AccountButton } from "@/src/components/AccountButton";
-import { InvoiceActions } from "@/src/components/InvoiceActions";
+import { showDocDone } from "@/src/components/DocDoneSheet";
 import { KeyboardScreen } from "@/src/components/KeyboardScreen";
 import { SyncBanner } from "@/src/components/SyncBanner";
 import { useApi, useBottomChrome } from "@/src/hooks";
-import { useSyncState } from "@/src/offline";
 import { offlineSale } from "@/src/offlineActions";
 import { usePriceResolver, useExchangeRate, toBaseSyp } from "@/src/pricing";
 import { radius, spacing, useTheme } from "@/src/theme";
-import { Btn, Card, Empty, Field, Header, IconBtn, IconName, Ionicons, Loading, Segments, Select, Sheet, T, useToast } from "@/src/ui";
+import { Btn, Card, Empty, Field, Header, IconBtn, IconName, Ionicons, Loading, Segments, Select, T, useToast } from "@/src/ui";
 
 type Line = { product_id: string; name: string; available: number; quantity: string; unit: "PIECE" | "PACKAGE"; price: string; ppp: number; currency: string; pieceLabel: string; packLabel: string };
 type PayMode = "CASH" | "CREDIT" | "PARTIAL";
@@ -32,11 +31,9 @@ export default function NewSale() {
   const [lines, setLines] = useState<Line[]>([]);
   const [paid, setPaid] = useState("");
   const [payMode, setPayMode] = useState<PayMode | null>(null);
-  const [showDone, setShowDone] = useState(false);
   const [notes, setNotes] = useState("");
   const [last, setLast] = useState<any>(null);
   const { user } = useAuth();
-  const { online } = useSyncState();
 
   const resolve = usePriceResolver();
   const rate = useExchangeRate();
@@ -105,7 +102,7 @@ export default function NewSale() {
       setDType("NONE");
       setDVal("");
       setLast(doc);
-      setShowDone(true);
+      showDocDone("sale", doc);
       setCust(null);
       setLines([]);
       setPaid("");
@@ -144,7 +141,7 @@ export default function NewSale() {
           <Card testID="last-invoice-card" style={{ backgroundColor: colors.brandTertiary, borderColor: colors.brandSecondary, gap: spacing.sm }}>
             <T v="label" color="brandPrimary">تم إنشاء الفاتورة {invNo(shown)}{shown.pending ? " (بانتظار المزامنة)" : ""}</T>
             <T v="caption">{shown.customer_name} · الإجمالي {money(shown.total)} · المتبقي {money(shown.remaining)}</T>
-            <Btn testID="last-invoice-open-actions" small variant="secondary" icon="print-outline" title="طباعة أو إرسال" onPress={() => setShowDone(true)} />
+            <Btn testID="last-invoice-open-actions" small variant="secondary" icon="print-outline" title="طباعة أو إرسال" onPress={() => showDocDone("sale", shown)} />
           </Card>
         )}
         <Select testID="sale-customer-select" label="العميل" placeholder="اختر العميل" value={cust?.name ?? null} options={customers.data ?? []} getLabel={(c: any) => c.name} getSub={(c: any) => `الدين: ${money(c.balance)}`} onSelect={setCust} />
@@ -244,34 +241,6 @@ export default function NewSale() {
           )}
         </View>
         <Field testID="sale-notes-input" label="ملاحظات" value={notes} onChangeText={setNotes} />
-        <Sheet
-          testID="sale-done-sheet"
-          visible={showDone && !!shown}
-          onClose={() => setShowDone(false)}
-          title="تم حفظ الفاتورة"
-          footer={<Btn testID="sale-done-new-button" variant="secondary" icon="add-circle-outline" title="فاتورة جديدة" onPress={() => setShowDone(false)} />}
-        >
-          {shown && (
-            <View style={{ gap: spacing.md }}>
-              <View style={{ gap: spacing.xs }}>
-                <T v="h2" testID="sale-done-invoice-no">فاتورة {invNo(shown)}</T>
-                {shown.pending && (
-                  <T v="caption" color="warning" testID="sale-done-pending">
-                    {online ? "جارٍ المزامنة… رقم الفاتورة نهائي ولن يتغير" : "محفوظة على الجهاز برقمها النهائي — ستُزامن عند الاتصال"}
-                  </T>
-                )}
-                <T v="caption">{shown.customer_name}</T>
-                <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
-                  <View style={{ flex: 1 }}><T v="caption">الإجمالي</T><T v="label">{money(shown.total)}</T></View>
-                  <View style={{ flex: 1 }}><T v="caption">المدفوع</T><T v="label" color="success">{money(shown.paid_amount)}</T></View>
-                  <View style={{ flex: 1 }}><T v="caption">المتبقي</T><T v="label" color={shown.remaining > 0 ? "warning" : "success"}>{money(shown.remaining)}</T></View>
-                </View>
-              </View>
-              <T v="label" color="onSurfaceSecondary">طباعة أو إرسال الفاتورة</T>
-              <InvoiceActions doc={shown} />
-            </View>
-          )}
-        </Sheet>
     </KeyboardScreen>
   );
 }

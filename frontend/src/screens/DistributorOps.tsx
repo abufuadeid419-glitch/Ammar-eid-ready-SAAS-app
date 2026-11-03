@@ -13,6 +13,7 @@ import { InvoiceSheet, ReturnSheet } from "@/src/screens/Sales";
 import { Unit, UnitToggle, piecesOf, qtyLabel, unitName } from "@/src/components/UnitToggle";
 import { spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Card, Empty, Field, Header, IconBtn, Loading, Row, Segments, Select, Sheet, T, useToast } from "@/src/ui";
+import { showDocDone } from "@/src/components/DocDoneSheet";
 
 type OpsTab = "receipts" | "payments" | "returns" | "wreturns";
 const isToday = (s: string) => new Date(s).toDateString() === new Date().toDateString();
@@ -35,10 +36,12 @@ function NewReceiptSheet({ visible, onClose }: { visible: boolean; onClose: () =
     if (base > cust.balance + 0.001) return toast("المبلغ أكبر من دين العميل", "error");
     setSaving(true);
     try {
-      await offlineCollection({ customer: cust, amount: +amount, notes, userName: user?.name, currency: cur, rate });
-      toast("تم تسجيل سند القبض");
+      const doc = await offlineCollection({ customer: cust, amount: +amount, notes, userName: user?.name, currency: cur, rate });
+      showDocDone("collection", doc);
       setCust(null); setAmount(""); setCur("SYP"); setNotes("");
       onClose();
+    } catch (e: any) {
+      toast(e?.message ?? "تعذر حفظ المستند", "error");
     } finally {
       setSaving(false);
     }
@@ -86,10 +89,12 @@ function NewPaymentSheet({ visible, onClose }: { visible: boolean; onClose: () =
     if (!notes.trim()) return toast("اكتب سبب رد المبلغ", "error");
     setSaving(true);
     try {
-      await offlinePayment({ customer: cust, amount: +amount, notes, userName: user?.name, currency: cur, rate });
-      toast("تم تسجيل سند الصرف");
+      const doc = await offlinePayment({ customer: cust, amount: +amount, notes, userName: user?.name, currency: cur, rate });
+      showDocDone("payment", doc);
       setCust(null); setAmount(""); setCur("SYP"); setNotes("");
       onClose();
+    } catch (e: any) {
+      toast(e?.message ?? "تعذر حفظ المستند", "error");
     } finally {
       setSaving(false);
     }
@@ -133,10 +138,12 @@ function WarehouseReturnSheet({ visible, onClose }: { visible: boolean; onClose:
     if (bad) return toast(`كمية غير صحيحة: ${bad.item.product_name}`, "error");
     setSaving(true);
     try {
-      await offlineWarehouseReturn(lines.map((l) => ({ product_id: l.item.product_id, product_name: l.item.product_name, quantity: +l.qty, unit: l.unit, unit_label: unitName(l.item, l.unit), pieces: piecesOf(l.item, l.unit, +l.qty) })), notes, user?.name);
-      toast("تم إرسال المرتجع بانتظار تأكيد المستودع");
+      const doc = await offlineWarehouseReturn(lines.map((l) => ({ product_id: l.item.product_id, product_name: l.item.product_name, quantity: +l.qty, unit: l.unit, unit_label: unitName(l.item, l.unit), pieces: piecesOf(l.item, l.unit, +l.qty) })), notes, user?.name);
+      showDocDone("wreturn", doc);
       setLines([]); setNotes("");
       onClose();
+    } catch (e: any) {
+      toast(e?.message ?? "تعذر حفظ المستند", "error");
     } finally {
       setSaving(false);
     }

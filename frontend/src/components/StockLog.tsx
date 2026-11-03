@@ -6,6 +6,7 @@ import { Unit, UnitToggle, piecesOf, pppOf, qtyLabel, unitName } from "@/src/com
 import { useApi, useBottomChrome, useMutate } from "@/src/hooks";
 import { spacing } from "@/src/theme";
 import { Badge, Btn, Empty, Field, Loading, Row, Select, Sheet, T, useToast } from "@/src/ui";
+import { showDocDone } from "@/src/components/DocDoneSheet";
 
 const mvLabel: Record<string, string> = {
   PURCHASE: "شراء", DELIVERY: "تسليم لموزع", DELIVERY_REJECTED: "شحنة مرفوضة", SALE: "بيع", SALE_VOID: "إلغاء فاتورة",
@@ -20,7 +21,10 @@ export function StockLog({ tab, products }: { tab: "returns" | "movements"; prod
   const moves = useApi<any[]>("/stock-movements", tab === "movements");
   const prices = useApi<any[]>("/price-history", tab === "movements");
   const [form, setForm] = useState<any>(null);
-  const create = useMutate("POST", "/purchase-returns", "تم تسجيل مرتجع المشتريات", () => setForm(null));
+  const create = useMutate("POST", "/purchase-returns", undefined, (r) => {
+    setForm(null);
+    showDocDone("purchase_return", r);
+  });
   const fprod = products.find((p) => p.id === form?.product_id);
   const submit = () => {
     if (!form.product_id || !(+form.quantity > 0)) return toast("اختر المنتج وأدخل الكمية", "error");

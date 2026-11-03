@@ -111,12 +111,12 @@ export function DocActions({ make, title, phone, waText, idPrefix, smsTitle }: {
   return (
     <View style={{ gap: spacing.sm }}>
       {btAvailable && <BluetoothPrint make={make} />}
-      <Btn testID={`${idPrefix}-whatsapp-pdf-button`} small icon="logo-whatsapp" title={phone ? `إرسال PDF عبر واتساب إلى ${phone}` : "إرسال PDF عبر واتساب"} onPress={sharePdfWhatsApp} />
+      <Btn testID={`${idPrefix}-whatsapp-pdf-button`} small style={{ minHeight: 44 }} icon="logo-whatsapp" title={phone ? `إرسال PDF عبر واتساب إلى ${phone}` : "إرسال PDF عبر واتساب"} onPress={sharePdfWhatsApp} />
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        <Btn testID={`${idPrefix}-share-pdf-button`} style={{ flex: 1 }} small variant={btAvailable ? "secondary" : "primary"} title={Platform.OS === "web" ? "PDF / حفظ" : "PDF / مشاركة"} icon="document-text-outline" onPress={share} />
-        <Btn testID={`${idPrefix}-print-button`} style={{ flex: 1 }} small variant="secondary" title="طباعة" icon="print-outline" onPress={print} />
+        <Btn testID={`${idPrefix}-share-pdf-button`} style={{ flex: 1, minHeight: 44 }} small variant={btAvailable ? "secondary" : "primary"} title={Platform.OS === "web" ? "PDF / حفظ" : "PDF / مشاركة"} icon="document-text-outline" onPress={share} />
+        <Btn testID={`${idPrefix}-print-button`} style={{ flex: 1, minHeight: 44 }} small variant="secondary" title="طباعة" icon="print-outline" onPress={print} />
       </View>
-      <Btn testID={`${idPrefix}-sms-button`} small variant="ghost" icon="chatbox-ellipses-outline" title={smsTitle ?? "إرسال رسالة نصية SMS إلى العميل"} onPress={() => openSms(phone, waText(), org.data?.phone_country_code).catch(() => toast("تعذر فتح الرسائل النصية", "error"))} />
+      <Btn testID={`${idPrefix}-sms-button`} small style={{ minHeight: 44 }} variant="ghost" icon="chatbox-ellipses-outline" title={smsTitle ?? "إرسال رسالة نصية SMS إلى العميل"} onPress={() => openSms(phone, waText(), org.data?.phone_country_code).catch(() => toast("تعذر فتح الرسائل النصية", "error"))} />
       <T v="caption" style={{ textAlign: "center" }} testID={`${idPrefix}-paper-size`}>
         مقاس الطباعة: ورق حراري 80 مم
         {btPlatform && !btAvailable ? " · الطباعة المباشرة عبر البلوتوث متاحة في التطبيق المثبت" : ""}

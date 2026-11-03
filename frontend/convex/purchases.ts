@@ -101,6 +101,7 @@ export const create = mutation({
     const doc = {
       id: newId(),
       org_id: user.org_id!,
+      purchase_no: await nextNo(ctx, user.org_id!, "pur", "PUR"),
       product_id: prod.id,
       product_name: prod.name,
       ...u,
@@ -108,6 +109,7 @@ export const create = mutation({
       piece_cost: pieceCost,
       total: round2(quantity * unit_cost),
       supplier: supplier ?? "",
+      created_by_name: user.name ?? null,
       created_at: nowIso(),
     };
     await ctx.db.insert("purchases", doc);

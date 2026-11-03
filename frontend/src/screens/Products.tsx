@@ -12,6 +12,7 @@ import { useApi, useBottomChrome, useMutate } from "@/src/hooks";
 import { queryClient } from "@/src/query-client";
 import { spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Empty, ErrorBox, Field, Header, IconBtn, Loading, Row, Segments, Select, Sheet, T, useToast } from "@/src/ui";
+import { showDocDone } from "@/src/components/DocDoneSheet";
 
 const blank = { name: "", category: "", unit: "قطعة", package_unit: "كرتونة", pieces_per_package: "1", price_currency: "SYP", cost_price: "", sale_price: "", package_price: "", stock: "", min_stock: "" };
 
@@ -101,9 +102,9 @@ export default function Products() {
     if (!buy.product_id || !(+buy.quantity > 0)) return toast("اختر المنتج وأدخل الكمية", "error");
     setBuying(true);
     try {
-      await api("/purchases", { method: "POST", body: { product_id: buy.product_id, quantity: +buy.quantity, unit: buy.unit, unit_cost: +buy.unit_cost || 0, supplier: buy.supplier } });
+      const doc = await api("/purchases", { method: "POST", body: { product_id: buy.product_id, quantity: +buy.quantity, unit: buy.unit, unit_cost: +buy.unit_cost || 0, supplier: buy.supplier } });
       queryClient.invalidateQueries();
-      toast("تمت إضافة الكمية للمستودع");
+      showDocDone("purchase", doc);
       setBuy(null);
     } catch (e: any) {
       if (String(e?.message).includes("PRICING_METHOD_REQUIRED")) setAskPricing(true);

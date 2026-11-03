@@ -237,6 +237,23 @@ export type SupplierRow = { type: "PURCHASE" | "PURCHASE_RETURN" | "SUPPLIER_PAY
 export type SupplierStatement = { name: string; rows: SupplierRow[]; balance: number };
 const supplierRowLabel = { PURCHASE: "مشتريات", PURCHASE_RETURN: "مرتجع", SUPPLIER_PAYMENT: "دفعة" } as const;
 
+// Warehouse purchase (stock-in from a supplier) or purchase return (stock-out back to the supplier).
+export function purchaseReceipt(p: any, org: any, logo: string | null, isReturn: boolean): ReceiptDoc {
+  const r = new Receipt();
+  header(r, org, logo, isReturn ? "مرتجع مشتريات" : "فاتورة شراء", p.return_no ?? p.purchase_no ?? null, p.created_at);
+  if (p.supplier) r.kv("المورد", p.supplier);
+  if (p.created_by_name) r.kv("بواسطة", p.created_by_name);
+  r.hr();
+  r.push({ t: "ih", a: "الصنف", b: "الكمية × التكلفة = الإجمالي" });
+  const unit = p.unit_label || (p.unit === "PACKAGE" ? "كرتونة" : "قطعة");
+  r.push({ t: "item", title: p.product_name, rows: [{ label: `${money(p.quantity)} ${unit} × ${money(p.unit_cost)}`, value: money(p.total) }] });
+  r.hr();
+  r.kv("الإجمالي", `${money(p.total)} ${cur(org)}`, { big: true });
+  if (p.reason) r.text("note", `السبب: ${p.reason}`);
+  footer(r, org, isReturn ? "توقيع المورد" : "توقيع أمين المستودع");
+  return r.page();
+}
+
 export function supplierPaymentReceipt(p: any, org: any, logo: string | null, balanceAfter?: number): ReceiptDoc {
   const r = new Receipt();
   header(r, org, logo, "سند صرف لمورد", p.voucher_no, p.created_at);

@@ -32,3 +32,7 @@
 - convex/numbering.ts: POST /api/numbers/reserve {device_id, kinds} atomically reserves contiguous blocks from the company counter (counters table) per user+device+kind (sizes: sale/col 40, ret/pay 10, wret 5); idempotent (returns outstanding blocks, new block only when < half a block unused). GET /api/numbers/blocks audit (owner/accountant). Table number_blocks (used[] list).
 - lib.allocDocNo: create mutations (sales, collections, sales-returns, payment-vouchers, warehouse-returns) accept doc_no; validated (prefix, in user's block, not used) and kept; else nextNo. Id idempotency runs first.
 - Client src/docNumbers.ts: persistent per-user pool, mutex, persist-before-use, refill on login/reconnect/after sync; offlineActions stamp final numbers (no more "مؤقت").
+
+## Iteration 2026-11 (f) — Unified print/send popup for all documents
+- src/components/DocDoneSheet.tsx: global showDocDone(kind, doc) + DocDoneHost at app root (same design as the sale popup): sale, sales return, collection (all entry points), payment voucher, warehouse return, purchase, purchase return, supplier payment. Pending docs printable (final numbers), swaps to synced server copy.
+- receipts.purchaseReceipt added; purchases now get purchase_no (PUR-xxxxx) + created_by_name.

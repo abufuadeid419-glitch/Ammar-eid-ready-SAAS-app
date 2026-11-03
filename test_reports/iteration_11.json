@@ -1,0 +1,22 @@
+{
+  "summary": "Follow-up verification (no documents created). Code: DistributorOps NewReceiptSheet/NewPaymentSheet/WarehouseReturnSheet submits and CollectSheet submit all wrap offline* calls in try/catch/finally, toast(e?.message ?? 'تعذر حفظ المستند','error') and reset saving. DocDoneSheet renders doc-done-wreturn-note 'بانتظار تأكيد المستودع لاستلام البضاعة' only for kind==='wreturn'. DocActions passes minHeight:44 via style (merged after Btn base minHeight 40, so it overrides). UI: as distributor (test_token_agent), tour skipped, Sales tab loaded, INV-00434 detail opened; invoice-whatsapp-pdf-button, invoice-share-pdf-button, invoice-print-button, invoice-sms-button each measured 44px tall. No page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "DocActions print() swallows errors silently (catch {}). Optional: show a toast like share() does.",
+    "bt-print-button / bt-change-printer (BluetoothPrint) still use small Btn with no minHeight 44 (40px). Only shown in native builds, so not testable on web."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Distributor sales detail: /dist/sales, then click text INV-00434. DocActions idPrefix='invoice' on the invoice detail and 'doc-done' in the popup."
+}

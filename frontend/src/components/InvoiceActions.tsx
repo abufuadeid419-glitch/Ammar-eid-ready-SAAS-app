@@ -3,7 +3,7 @@ import { DocActions } from "@/src/components/DocActions";
 import { useApi } from "@/src/hooks";
 import { invoiceReceipt } from "@/src/receipts";
 
-function waText(doc: any, org: any) {
+export function invoiceWaText(doc: any, org: any) {
   const lines = [
     `*${org?.name ?? ""}*`,
     `${doc.return_no ? "مرتجع" : "فاتورة"} رقم: ${doc.invoice_no ?? doc.return_no}`,
@@ -31,7 +31,7 @@ export function InvoiceActions({ doc }: { doc: any }) {
       phone={customer?.phone}
       waTitle="إرسال واتساب"
       make={() => invoiceReceipt(doc, org.data, logo.data?.data_uri ?? null, customer)}
-      waText={() => waText(doc, org.data)}
+      waText={() => invoiceWaText(doc, org.data)}
     />
   );
 }

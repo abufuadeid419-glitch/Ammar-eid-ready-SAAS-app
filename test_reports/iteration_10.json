@@ -1,0 +1,32 @@
+{
+  "summary": "Unified post-save print popup (DocDoneSheet / DocDoneHost) tested in the Expo web preview at 375x667 on LIVE Convex test org data. I created at most one document of each type, all with tiny amounts. All 6 tested flows opened the popup automatically, with the correct title, final number, party, amount and the 4 DocActions buttons. In each case the source form sheet was already closed, only one 'تم حفظ' text was on screen (no duplicate toasts), the print button made no crash (on web it created the hidden receipt-print-frame iframe) and the close button dismissed the popup. Flows: (1) Distributor sale INV-00434, on credit, paid 0 / remaining 1,400. The close button reads 'فاتورة جديدة', and last-invoice-open-actions reopens the same popup. (2) Distributor collection voucher (سند قبض) RCV-00344, 100, from the Ops screen. (3) Distributor sales return RET-00147, 1 piece of TEST_PROD_06c08830. (4) Owner purchase PUR-00001, 1 piece at 100, supplier TEST_SUPPLIER. (5) Owner purchase return PRT-00003, 1 piece at 50. (6) Owner supplier payment SPY-00005, 10. Code review: offlinePayment (DistributorOps:91), offlineWarehouseReturn (DistributorOps:138) and CollectSheet:34 all call showDocDone. No JS page errors in any run. No deprecated Expo packages found in the reviewed files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Ops collection voucher / payment voucher / warehouse return / customer CollectSheet", "issue": "submit() uses try/finally with NO catch. offline* can throw, e.g. docNumbers.ts:122 'لا توجد أرقام مستندات محجوزة…' when offline with no reserved numbers. The user then gets no error toast (unhandled promise rejection) and the sheet just stops loading. NewSale and the Sales return already catch and show a toast. Reference: src/screens/DistributorOps.tsx:38-46, 89-96, 136-145; src/components/CollectSheet.tsx:32-38", "affected_testIDs": ["save-receipt-button", "save-payment-button", "save-wreturn-button"]}
+    ],
+    "design_issues": [
+      {"screen": "DocDoneSheet", "issues": ["Small action buttons (doc-done-print-button, doc-done-share-pdf-button, doc-done-whatsapp-pdf-button, doc-done-sms-button) are 40px tall, under the 44px touch-target minimum", "Warehouse return (wreturn) lost its old message 'تم إرسال المرتجع بانتظار تأكيد المستودع'. The popup only says 'تم حفظ إذن الإرجاع للمستودع' and no longer tells the user that warehouse confirmation is still pending (code review)", "Supplier payment popup receipt calls supplierPaymentReceipt without balanceAfter, so the printed voucher has no 'المتبقي للمورد' line (DocDoneSheet.tsx:108)"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [".screenshots/sale_done.jpg", ".screenshots/rcv_done.jpg", ".screenshots/ret_done.jpg", ".screenshots/pur_done.jpg", ".screenshots/pret_done.jpg", ".screenshots/spay_done.jpg"],
+  "action_items": [
+    "Add catch { toast(e.message,'error') } to submit() in NewReceiptSheet, NewPaymentSheet and WarehouseReturnSheet (DistributorOps.tsx) and in CollectSheet.tsx, so a failed save (e.g. no reserved numbers while offline) shows an error",
+    "Optional: show a 'بانتظار تأكيد المستودع' caption in DocDoneSheet when kind === 'wreturn'",
+    "Optional: on iOS, check on a real device that the supplier-payment popup shows over the still-open SupplierStatementsSheet (nested Modal). It works on web",
+    "Optional: make the DocActions small buttons at least 44px tall"
+  ],
+  "critical_code_review_comments": [
+    "DocDoneHost is mounted once in app/_layout.tsx. showDocDone waits 450ms before opening so the source modal can finish dismissing. Good.",
+    "Legacy purchases created before this change have no purchase_no (the new counter started at PUR-00001). purchaseReceipt falls back to null, so reprints of old purchases show no number.",
+    "Delivery to distributor (/deliveries, OwnerMore.tsx:91) still uses a toast and has no printable document or number. Fine if it is not considered a printable doc."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not requested)", "frontend": "100% (6/6 doc-done flows)"},
+  "seed_data_creation": "LIVE test org data created: INV-00434 (TEST_IDEMP_TEST_ef6d264373ec, 1 pc TEST_PROD_06c08830, credit 1,400); RCV-00344 (100, same customer); RET-00147 (1 pc, 1,400); PUR-00001 (1 pc @100, supplier TEST_SUPPLIER); PRT-00003 (1 pc @50, TEST_SUPPLIER); SPY-00005 (10). SPY-00005 went to the existing supplier TEST_SUPPLIER_2fdf13, not to TEST_SUPPLIER, because the row search matched it first.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Popup testIDs: doc-done-sheet, doc-done-number, doc-done-party, doc-done-amount, doc-done-paid/remaining (sale only), doc-done-pending, doc-done-{whatsapp-pdf,share-pdf,print,sms}-button, doc-done-close-button. Web print creates an iframe with data-testid=receipt-print-frame; count it with a MutationObserver. Routes: /dist/sale, /dist/ops (ops-new-receipts-button), /dist/sales (segment-returns then add-return-button), /owner/products (add-purchase-button; segment-returns then add-purchase-return-button; supplier-statements-button then supplier-row-N then supplier-add-payment-button)."
+}

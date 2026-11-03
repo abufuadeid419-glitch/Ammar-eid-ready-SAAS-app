@@ -7,6 +7,7 @@ import { offlineCollection } from "@/src/offlineActions";
 import { useExchangeRate } from "@/src/pricing";
 import { spacing } from "@/src/theme";
 import { Btn, Card, Field, Segments, Sheet, T, useToast } from "@/src/ui";
+import { showDocDone } from "@/src/components/DocDoneSheet";
 
 export function CollectSheet({ customer, onClose }: { customer: any | null; onClose: () => void }) {
   const toast = useToast();
@@ -29,9 +30,11 @@ export function CollectSheet({ customer, onClose }: { customer: any | null; onCl
     if (base > customer.balance + 0.001) return toast("المبلغ أكبر من دين العميل", "error");
     setSaving(true);
     try {
-      await offlineCollection({ customer, amount: +amount, notes, userName: user?.name, currency: cur, rate });
-      toast("تم تسجيل التحصيل");
+      const doc = await offlineCollection({ customer, amount: +amount, notes, userName: user?.name, currency: cur, rate });
+      showDocDone("collection", doc);
       onClose();
+    } catch (e: any) {
+      toast(e?.message ?? "تعذر حفظ المستند", "error");
     } finally {
       setSaving(false);
     }

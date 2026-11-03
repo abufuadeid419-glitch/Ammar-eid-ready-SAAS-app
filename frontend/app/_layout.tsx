@@ -19,6 +19,7 @@ import { ToastProvider } from "@/src/ui";
 import { UpdateGate } from "@/src/components/UpdateGate";
 import { AnimatedSplash } from "@/src/components/AnimatedSplash";
 import { BtPrintHost } from "@/src/components/BtPrintHost";
+import { DocDoneHost } from "@/src/components/DocDoneSheet";
 
 // Disable logbox errors etc so that users can see the app
 // and agent works as expected.
@@ -111,6 +112,7 @@ export default function RootLayout() {
                   <Gate />
                 </UpdateGate>
                 <BtPrintHost />
+                <DocDoneHost />
               </ToastProvider>
             </AuthProvider>
           </KeyboardProvider>

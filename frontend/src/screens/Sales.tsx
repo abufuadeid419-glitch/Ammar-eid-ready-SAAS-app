@@ -14,6 +14,7 @@ import { toBaseSyp, useExchangeRate, usePriceResolver } from "@/src/pricing";
 import { Unit, UnitToggle, piecesOf, pppOf, qtyLabel, unitName } from "@/src/components/UnitToggle";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 import { Badge, Btn, Card, Empty, ErrorBox, Field, Header, IconBtn, Loading, Row, Segments, Select, Sheet, T, toLatinDigits, useToast } from "@/src/ui";
+import { showDocDone } from "@/src/components/DocDoneSheet";
 
 type Tab = "sales" | "returns" | "collections" | "payments" | "purchases" | "purchase_returns";
 type Range = "all" | "today" | "week" | "month" | "custom";
@@ -110,8 +111,8 @@ export function ReturnSheet({ visible, onClose }: { visible: boolean; onClose: (
     if (!cust || !prod || !(+qty > 0)) return toast("أكمل بيانات المرتجع", "error");
     setSaving(true);
     try {
-      await offlineReturn({ customer: cust, line: { product_id: prod.id, product_name: prod.name, quantity: +qty, price, unit, unit_label: unitName(prod, unit), pieces: piecesOf(prod, unit, +qty) }, reason, userName: user?.name });
-      toast("تم تسجيل المرتجع");
+      const doc = await offlineReturn({ customer: cust, line: { product_id: prod.id, product_name: prod.name, quantity: +qty, price, unit, unit_label: unitName(prod, unit), pieces: piecesOf(prod, unit, +qty) }, reason, userName: user?.name });
+      showDocDone("return", doc);
       setCust(null); setProd(null); setQty(""); setUnit("PIECE"); setReason("");
       onClose();
     } catch (e: any) {
