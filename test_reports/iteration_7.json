@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only test of NewSale payment choice and the post-save print/send popup, run as the distributor (test_token_agent) on a 390x844 viewport. Everything requested works. The 3 payment cards (sale-pay-cash/credit/partial) start unselected; the selected card gets a gold border (rgb 212,175,55) and a check icon. Summary values are correct: cash 1,400/0, credit 0/1,400, partial 500/900. sale-footer-remaining shows only for credit and partial. sale-paid-input shows only for partial. All validation toasts fire: no payment choice, partial 0, partial = total (1400), partial > total (5000). Arabic digits ٥٠٠ are converted to 500. Created 2 live invoices for TEST_IDEMP_TEST_ef6d264373ec: a partial 500 sale (synced as INV-00031, remaining 900) and a credit sale (synced as INV-00032, remaining 1,400). In both cases sale-done-sheet opened with the total/paid/remaining values and all 4 action buttons. sale-done-new-button and the X button both close it, and the payment choice and form reset. One HIGH issue: the popup always shows a temporary invoice number ('INV-مؤقت-XXXX (بانتظار المزامنة)') and never updates to the server number, even when online and well after the sync finished. So printing or sending straight from the popup gives the customer a PDF/WhatsApp message with a temporary number. Deprecated packages: none checked/found in the reviewed files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "sale-done-sheet / last-invoice-card", "issue": "After saving, the sheet shows the temporary number from offlineSale (tempNo, pending:true), e.g. 'INV-مؤقت-SZOL (بانتظار المزامنة)'. The background sync finished within about 1s (the banner said 'تمت مزامنة 1 عملية' and the Sales list showed INV-00032), but the `last` state in NewSale is never updated with the server record. Still stale after 5s. Print, PDF and WhatsApp started from the popup use this stale doc, so the receipt carries the temporary number and the 'pending' label. Reference: /app/frontend/src/screens/NewSale.tsx:100 and /app/frontend/src/offlineActions.ts:42", "testID": "sale-done-sheet", "priority": "HIGH"},
+      {"component": "InvoiceActions duplicate testIDs", "issue": "While the sheet is open, the last-invoice-card behind it also renders InvoiceActions. So invoice-whatsapp-pdf-button, invoice-share-pdf-button, invoice-print-button and invoice-sms-button each appear twice, and `.first` hits the hidden card copy (y<0) rather than the sheet's. Reference: NewSale.tsx:140 and :258", "testID": "invoice-print-button", "priority": "LOW"},
+      {"component": "sale-done-sheet title", "issue": "In RTL the invoice number shows reversed as '55LU-مؤقت-INV' because Latin and Arabic text are mixed in one line (bidi). Wrap the number in an LTR isolate, or fix it together with the real-number issue.", "testID": "sale-done-sheet", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "NewSale payment cards", "issues": ["Hint captions use fontSize 11 in muted color on a dark surface, which is small and low-contrast on mobile. Suggest at least 12.", "With partial > total, the summary shows paid=total / remaining 0 (clamped) before the error toast, which may mislead. Consider an inline error under sale-paid-input."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "HIGH: Update the popup's invoice (`last`) to the server-synced record once the queued /sales op syncs (match by id and pick up the real invoice_no, pending:false). Alternatively, when online, wait for the sync to finish before opening the sheet, or disable print/send while the invoice is pending. Otherwise printed or sent invoices carry the temporary number 'INV-مؤقت-…'.",
+    "LOW: Hide the last-invoice-card while sale-done-sheet is open, or give it a different idPrefix, to avoid duplicate invoice-* testIDs.",
+    "LOW: Fix the bidi display of the invoice number in the sheet title and raise the payment-card hint fontSize from 11 to 12 or more."
+  ],
+  "critical_code_review_comments": [
+    "NewSale.tsx:92 sends paid=null for cash and relies on offlineSale defaulting to total. This works but is implicit; passing total explicitly is clearer.",
+    "The partial-payment check at NewSale.tsx:86 correctly rejects 0 and amounts >= total. Cash and credit modes ignore leftover `paid` text."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "92%"},
+  "seed_data_creation": "Created 2 live invoices for customer TEST_IDEMP_TEST_ef6d264373ec using TEST_PROD_06c08830 (qty 1 piece each): INV-00031 partial (paid 500, remaining 900) and INV-00032 credit (paid 0, remaining 1400). Inventory went 10 -> 8.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Log in by setting localStorage session_token=JSON.stringify('test_token_agent') and going to /dist/sale. Select options via select-search-input + select-option-0. Toasts have no testid; check document.body.innerText. TEST_PROD_06c08830 now has 8 pieces left.",
+  "rca_of_issue": "offlineSale() always returns a local optimistic doc with tempNo and pending:true. The sync engine later replaces the cached /sales list entry (the Sales tab correctly shows INV-0003x), but NewSale stores that doc in local state (setLast) and never re-reads it, so the sheet and card stay stale."
+}

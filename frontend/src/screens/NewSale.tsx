@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import { money } from "@/src/api";
 import { useAuth } from "@/src/auth";
@@ -12,9 +12,15 @@ import { useSyncState } from "@/src/offline";
 import { offlineSale } from "@/src/offlineActions";
 import { usePriceResolver, useExchangeRate, toBaseSyp } from "@/src/pricing";
 import { radius, spacing, useTheme } from "@/src/theme";
-import { Btn, Card, Empty, Field, Header, IconBtn, Loading, Segments, Select, T, useToast } from "@/src/ui";
+import { Btn, Card, Empty, Field, Header, IconBtn, IconName, Ionicons, Loading, Segments, Select, Sheet, T, useToast } from "@/src/ui";
 
 type Line = { product_id: string; name: string; available: number; quantity: string; unit: "PIECE" | "PACKAGE"; price: string; ppp: number; currency: string; pieceLabel: string; packLabel: string };
+type PayMode = "CASH" | "CREDIT" | "PARTIAL";
+const PAY_OPTIONS: { key: PayMode; label: string; hint: string; icon: IconName }[] = [
+  { key: "CASH", label: "نقدي", hint: "دفع كامل المبلغ", icon: "cash-outline" },
+  { key: "CREDIT", label: "آجل", hint: "يُضاف كاملاً للدين", icon: "time-outline" },
+  { key: "PARTIAL", label: "دفعة جزئية", hint: "جزء الآن والباقي دين", icon: "pie-chart-outline" },
+];
 
 export default function NewSale() {
   const { colors } = useTheme();
@@ -25,6 +31,8 @@ export default function NewSale() {
   const [cust, setCust] = useState<any>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [paid, setPaid] = useState("");
+  const [payMode, setPayMode] = useState<PayMode | null>(null);
+  const [showDone, setShowDone] = useState(false);
   const [notes, setNotes] = useState("");
   const [last, setLast] = useState<any>(null);
   const { user } = useAuth();
@@ -46,6 +54,14 @@ export default function NewSale() {
   const discount = dType === "PERCENT" ? (subtotal * Math.min(+dVal || 0, 100)) / 100 : dType === "FIXED" ? Math.min(+dVal || 0, subtotal) : 0;
   const total = Math.round((subtotal - discount) * 100) / 100;
   const [saving, setSaving] = useState(false);
+  const paidNow = payMode === "CASH" ? total : payMode === "CREDIT" ? 0 : payMode === "PARTIAL" ? Math.min(+paid || 0, total) : 0;
+  const remainingNow = Math.round((total - paidNow) * 100) / 100;
+  const partialBad = payMode === "PARTIAL" && paid !== "" && !(+paid > 0 && +paid < total);
+  // The saved invoice starts as a local (pending) copy; once the background sync lands, show the
+  // server record (same id) so the real invoice number is what gets printed or sent.
+  const sales = useApi<any[]>("/sales", !!last?.pending);
+  const shown = (last?.pending && sales.data?.find((s) => s.id === last.id && !s.pending)) || last;
+  const invNo = (d: any) => (d.pending ? `\u2066${String(d.invoice_no).replace("مؤقت-", "")}\u2069 (مؤقت)` : `\u2066${d.invoice_no}\u2069`);
 
   const addLine = (p: any) => {
     if (lines.find((l) => l.product_id === p.product_id)) return toast("المنتج مضاف مسبقاً", "error");
@@ -72,12 +88,14 @@ export default function NewSale() {
     if (!lines.length) return toast("أضف منتجاً واحداً على الأقل", "error");
     const bad = lines.find((l) => !(+l.quantity > 0) || piecesNeeded(l) > l.available + 0.0001);
     if (bad) return toast(`كمية غير صالحة: ${bad.name}`, "error");
+    if (!payMode) return toast("اختر طريقة الدفع: نقدي أو آجل أو دفعة جزئية", "error");
+    if (payMode === "PARTIAL" && !(+paid > 0 && +paid < total)) return toast(`أدخل مبلغاً أكبر من 0 وأقل من ${money(total)}`, "error");
     setSaving(true);
     try {
       const doc = await offlineSale({
         customer: cust,
         lines: lines.map((l) => ({ product_id: l.product_id, product_name: l.name, quantity: +l.quantity, unit: l.unit, pieces: piecesNeeded(l), price: unitSyp(l) })),
-        paid: paid === "" ? null : +paid || 0,
+        paid: payMode === "CASH" ? null : payMode === "CREDIT" ? 0 : +paid,
         notes,
         userName: user?.name,
         discountType: dType,
@@ -86,9 +104,11 @@ export default function NewSale() {
       setDType("NONE");
       setDVal("");
       setLast(doc);
+      setShowDone(true);
       setCust(null);
       setLines([]);
       setPaid("");
+      setPayMode(null);
       setNotes("");
       toast(online ? "تم حفظ الفاتورة" : "تم حفظ الفاتورة دون اتصال وستتم مزامنتها لاحقاً");
     } catch (e: any) {
@@ -112,15 +132,18 @@ export default function NewSale() {
             <T v="label" style={{ flex: 1 }}>الإجمالي</T>
             <T v="title" color="brandPrimary" testID="sale-total">{money(total)}</T>
           </View>
+          {payMode && payMode !== "CASH" && total > 0 && (
+            <T v="caption" testID="sale-footer-remaining">المدفوع {money(paidNow)} · يُضاف للدين {money(remainingNow)}</T>
+          )}
           <Btn testID="submit-sale-button" title="حفظ الفاتورة" icon="checkmark-circle-outline" onPress={submit} loading={saving} />
         </>
       }
     >
-        {last && (
-          <Card testID="last-invoice-card" style={{ backgroundColor: colors.brandTertiary, borderColor: colors.brandSecondary, gap: spacing.xs }}>
-            <T v="label" color="brandPrimary">تم إنشاء الفاتورة {last.invoice_no}{last.pending ? " (بانتظار المزامنة)" : ""}</T>
-            <T v="caption">{last.customer_name} · الإجمالي {money(last.total)} · المتبقي {money(last.remaining)}</T>
-            <InvoiceActions doc={last} />
+        {shown && (
+          <Card testID="last-invoice-card" style={{ backgroundColor: colors.brandTertiary, borderColor: colors.brandSecondary, gap: spacing.sm }}>
+            <T v="label" color="brandPrimary">تم إنشاء الفاتورة {invNo(shown)}{shown.pending ? " (بانتظار المزامنة)" : ""}</T>
+            <T v="caption">{shown.customer_name} · الإجمالي {money(shown.total)} · المتبقي {money(shown.remaining)}</T>
+            <Btn testID="last-invoice-open-actions" small variant="secondary" icon="print-outline" title="طباعة أو إرسال" onPress={() => setShowDone(true)} />
           </Card>
         )}
         <Select testID="sale-customer-select" label="العميل" placeholder="اختر العميل" value={cust?.name ?? null} options={customers.data ?? []} getLabel={(c: any) => c.name} getSub={(c: any) => `الدين: ${money(c.balance)}`} onSelect={setCust} />
@@ -169,8 +192,85 @@ export default function NewSale() {
           {dType !== "NONE" && <Field testID="sale-discount-input" label={dType === "PERCENT" ? "نسبة الخصم %" : "قيمة الخصم"} keyboardType="decimal-pad" value={dVal} onChangeText={setDVal} />}
           {discount > 0 && <T v="caption" testID="sale-discount-amount">المجموع {money(subtotal)} − خصم {money(discount)}</T>}
         </View>
-        <Field testID="sale-paid-input" label="المبلغ المدفوع (اتركه فارغاً للدفع الكامل)" keyboardType="decimal-pad" value={paid} onChangeText={setPaid} placeholder={money(total)} />
+        <View style={{ gap: spacing.sm }} testID="sale-payment-section">
+          <T v="label" color="onSurfaceSecondary">طريقة الدفع</T>
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            {PAY_OPTIONS.map((o) => {
+              const sel = payMode === o.key;
+              return (
+                <Pressable
+                  key={o.key}
+                  testID={`sale-pay-${o.key.toLowerCase()}`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: sel }}
+                  onPress={() => setPayMode(o.key)}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    minHeight: 96,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: spacing.xs,
+                    padding: spacing.sm,
+                    borderRadius: radius.md,
+                    borderWidth: 1.5,
+                    borderColor: sel ? colors.brandPrimary : colors.border,
+                    backgroundColor: sel ? colors.brandTertiary : colors.surfaceSecondary,
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <Ionicons name={sel ? "checkmark-circle" : o.icon} size={22} color={sel ? colors.brandPrimary : colors.muted} />
+                  <T v="label" style={{ color: sel ? colors.brandPrimary : colors.onSurface }}>{o.label}</T>
+                  <T v="caption" style={{ textAlign: "center", fontSize: 12, color: colors.onSurfaceSecondary }} numberOfLines={2}>{o.hint}</T>
+                </Pressable>
+              );
+            })}
+          </View>
+          {payMode === "PARTIAL" && (
+            <Field testID="sale-paid-input" label={`المبلغ المدفوع الآن (من ${money(total)})`} keyboardType="decimal-pad" value={paid} onChangeText={setPaid} placeholder="0" />
+          )}
+          {partialBad && <T v="caption" color="error" testID="sale-paid-error">المبلغ يجب أن يكون أكبر من 0 وأقل من {money(total)}</T>}
+          {payMode && total > 0 && !partialBad && (
+            <View testID="sale-payment-summary" style={{ flexDirection: "row", gap: spacing.sm }}>
+              <View style={{ flex: 1, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary }}>
+                <T v="caption">المدفوع</T>
+                <T v="label" color="success" testID="sale-summary-paid">{money(paidNow)}</T>
+              </View>
+              <View style={{ flex: 1, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary }}>
+                <T v="caption">المتبقي (دين على العميل)</T>
+                <T v="label" color={remainingNow > 0 ? "warning" : "success"} testID="sale-summary-remaining">{money(remainingNow)}</T>
+              </View>
+            </View>
+          )}
+        </View>
         <Field testID="sale-notes-input" label="ملاحظات" value={notes} onChangeText={setNotes} />
+        <Sheet
+          testID="sale-done-sheet"
+          visible={showDone && !!shown}
+          onClose={() => setShowDone(false)}
+          title="تم حفظ الفاتورة"
+          footer={<Btn testID="sale-done-new-button" variant="secondary" icon="add-circle-outline" title="فاتورة جديدة" onPress={() => setShowDone(false)} />}
+        >
+          {shown && (
+            <View style={{ gap: spacing.md }}>
+              <View style={{ gap: spacing.xs }}>
+                <T v="h2" testID="sale-done-invoice-no">فاتورة {invNo(shown)}</T>
+                {shown.pending && (
+                  <T v="caption" color="warning" testID="sale-done-pending">
+                    {online ? "جارٍ المزامنة… سيظهر رقم الفاتورة النهائي خلال لحظات" : "بانتظار الاتصال — الرقم مؤقت حتى المزامنة"}
+                  </T>
+                )}
+                <T v="caption">{shown.customer_name}</T>
+                <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs }}>
+                  <View style={{ flex: 1 }}><T v="caption">الإجمالي</T><T v="label">{money(shown.total)}</T></View>
+                  <View style={{ flex: 1 }}><T v="caption">المدفوع</T><T v="label" color="success">{money(shown.paid_amount)}</T></View>
+                  <View style={{ flex: 1 }}><T v="caption">المتبقي</T><T v="label" color={shown.remaining > 0 ? "warning" : "success"}>{money(shown.remaining)}</T></View>
+                </View>
+              </View>
+              <T v="label" color="onSurfaceSecondary">طباعة أو إرسال الفاتورة</T>
+              <InvoiceActions doc={shown} />
+            </View>
+          )}
+        </Sheet>
     </KeyboardScreen>
   );
 }

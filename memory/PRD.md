@@ -24,3 +24,6 @@
 - convex/billing.ts: daily cron 08:30 UTC → sendExpiryReminders (action). Paid (LICENSE, not SUSPENDED) orgs get in-app + SMS to owner at reminder_days (1–30, default 7), 3, 1 days left and on expiry; once per expiry date (org.expiry_reminders keys). SMS includes renew link <CONVEX_SITE_URL>/renew.
 - convex/http.ts: GET /renew — Arabic dark page that opens smartsystem://upgrade (works in installed builds, not Expo Go).
 - Convex deployed with CONVEX_DEPLOY_KEY (backend secret). Tests: iterations 5–6 passed.
+
+## Iteration 2026-11 (d) — Sale payment choice + print/send popup
+- NewSale: required payment choice نقدي / آجل / دفعة جزئية (partial amount 0<x<total, inline error), live paid/remaining summary; after save a bottom sheet (sale-done-sheet) with totals + WhatsApp PDF / PDF / print / SMS; swaps to synced invoice number automatically. Tests: iterations 7–8 passed.

@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only retest of NewSale run as the distributor (test_token_agent) at 390x844. All 4 retest items pass, and so does the regression. HIGH fix confirmed: at t=0 sale-done-invoice-no showed the temporary number 'INV-مؤقت-93M9' with the sale-done-pending note. About 0.5s later, while online, it switched to the real number 'INV-00033' and the pending note went away. The sheet's total/paid/remaining (1,400/500/900) and InvoiceActions now use the synced doc. last-invoice-card also shows INV-00033. invoice-* testIDs are now unique: each of the 4 buttons appears once with the sheet open and 0 times after it closes. The card has last-invoice-open-actions, which reopens the sheet with INV-00033. The synced invoice number renders correctly in RTL. For partial amounts of 0, 1400 and 5000, the inline sale-paid-error appears, sale-payment-summary is hidden, and the submit toast fires. 500 gives paid 500 / remaining 900 with no error. Hint text is 12px. Regression: toasts for no customer, no lines and no payment mode all fire. Cash gives 1,400/0 with no footer remaining. Credit gives 0/1,400 and the footer shows. sale-done-new-button and the X button close the sheet, and the form resets. One LOW leftover: the temporary number itself still shows scrambled in RTL. Deprecated packages: none found in the reviewed files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "sale-done-invoice-no (pending state)",
+        "issue": "The synced number (INV-00033) displays correctly, but the temporary number 'INV-مؤقت-93M9' still shows scrambled (roughly 'INV-93-M9مؤقت') even inside the LRI/PDI isolate. The Arabic word mixed with Latin and digits forms its own RTL run. Online it is visible for only about 0.5s; offline it stays until sync. Fix: insert LRM (\\u200E) around the separators in tempNo, or display the Arabic label outside the code. Reference: NewSale.tsx:64, offlineActions tempNo.",
+        "testID": "sale-done-invoice-no",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [".screenshots/it8_done_t0.png", ".screenshots/it8_done_final.png", ".screenshots/it8_reopen.png", ".screenshots/it8_partial.png"],
+  "action_items": ["LOW (optional): make the temporary invoice number display correctly in RTL by adding LRM marks in tempNo or rendering the 'مؤقت' label separately."],
+  "critical_code_review_comments": [
+    "NewSale.tsx:62-63: useApi('/sales', !!last?.pending) keeps the query enabled while `last` is pending. `shown` swaps in the server record, but `last` itself is never set to the synced doc. This works because sync invalidates /sales. Setting last = synced doc via a useEffect would be cleaner.",
+    "With PARTIAL selected and an empty amount, the summary shows paid 0 / remaining 1,400 (no error until the user types). This is acceptable because submit is blocked by a toast."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100% of requested retests (1 LOW cosmetic leftover)"},
+  "seed_data_creation": "Created 1 live invoice: INV-00033 for TEST_IDEMP_TEST_ef6d264373ec, PARTIAL, 1 piece of TEST_PROD_06c08830, total 1,400, paid 500, remaining 900. TEST_PROD_06c08830 should now have 7 pieces left.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Log in by setting localStorage session_token=JSON.stringify('test_token_agent'), go to /dist/sale and tap tour-skip-button if it shows. Select options via select-search-input + select-option-0. Toasts have no testid; check document.body.innerText. Live invoices INV-00031..33 were created by testing agents."
+}
