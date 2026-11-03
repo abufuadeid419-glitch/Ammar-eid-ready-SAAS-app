@@ -1,0 +1,41 @@
+{
+  "summary": "Tested the soft-deleted org lockout fix against the live Convex deployment fearless-ostrich-878 using org_test_1. Backend: 18 of 21 pytest cases passed (test_soft_deleted_org_lockout.py). A PENDING payment request was created first, then the org was soft-deleted. While deleted: GET /auth/me returns org.status DELETED. /products, /customers, /sales and /stats/overview return 400 with the deleted message and +963947744162. GET /subscription and /subscription/quote are blocked. POST /upgrade-requests and resubmitting a receipt are blocked with 'الحساب موقوف … +963947744162'. Developer actions that should fail all failed with 'المؤسسة محذوفة', and the org stayed DELETED after each one: assign-plan, PATCH status ACTIVE, the reactivate/unfreeze/extend/suspend/freeze sub-actions, and approving the pending request (which was not approved). The 3 failures: GET /plans, /payment-methods and /upgrade-requests still return 200 for the deleted org's owner. These are read-only and nothing gets re-activated. Frontend at 390x844: the owner of the deleted org lands on /blocked. It shows the deleted message, the org name, blocked-support-number '+963947744162' and blocked-whatsapp-button (52px tall). blocked-upgrade-button is absent (count 0), the refresh button keeps the screen blocked, and there were 0 page errors. The direct deep link /upgrade still opens the plans page and payment sheet. Submitting there returns HTTP 400, and the red toast shows the full deleted message with +963947744162, so the backend blocks it. Finally org_test_1 was restored. It is ACTIVE, LICENSE Pro, with the same expires_at 2027-11-03. 6 products load, /subscription returns 200, /owner/products renders, and the pending test request was cancelled.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /plans, GET /payment-methods, GET /upgrade-requests, GET /billing/settings", "issue": "billing.plansList, methodsList, requestsList and settingsGet only call getUser (billing.ts:32/55/197/332), not require(...,{billing:true}). The owner of a DELETED org still gets 200 from all four. They are read-only and nothing is re-activated, but the requirement says all org operations stop. Add assertNotDeleted for non-developer users."},
+      {"endpoint": "cron: subscription expiry reminders (billing.expiryReminderBatch)", "issue": "expiryReminderPlan (billing.ts:673) skips SUSPENDED orgs but not DELETED ones. The owner of a deleted LICENSE org will still get an SMS and in-app message saying 'جدّد اشتراكك' with the /renew link, which contradicts the deleted/suspended message. Add `|| o.status === 'DELETED'` to the guard. Other crons are fine because they are gated by isPro, which requires status ACTIVE."},
+      {"endpoint": "POST /dev/orgs/:id/soft-delete {restore:true}", "issue": "Still present from the previous iteration: restore always sets status ACTIVE (devAdmin.ts:88), so a status of SUSPENDED/FROZEN from before the delete is lost."},
+      {"endpoint": "POST /dev/orgs/:id/cancel-subscription", "issue": "This is a code review only; the endpoint was not run, because it would wipe the Pro plan of org_test_1. On a DELETED org it still downgrades the plan to FREE. It keeps the DELETED status, so it does not re-activate the org, but there is no DELETED guard, which is inconsistent with the other dev subscription mutations."},
+      {"endpoint": "GET /dev/subscriptions", "issue": "In the developer subscriptions list, the state mapping (subscription.ts:98) has no DELETED branch, so a deleted org shows as ACTIVE/EXPIRED/FREE."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "/upgrade route for a DELETED org", "issue": "_layout.tsx:74 always allows seg 'upgrade' for OWNER. A deleted org's owner can deep-link to /upgrade, see the plans, fill in the whole payment sheet and upload a receipt, and only gets the error toast on submit. Redirect DELETED orgs to /blocked, or show the deleted banner on /upgrade and hide choose-plan.", "testID": "choose-plan-*, submit-upgrade-button", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_soft_deleted_org_lockout.py", "/app/test_reports/pytest/soft_deleted_lockout.xml"],
+  "action_items": [
+    "Guard billing.plansList/methodsList/requestsList/settingsGet with assertNotDeleted(org, DELETED_OWNER_MSG) for non-DEVELOPER users, or switch them to require(..., {billing:true}).",
+    "billing.ts expiryReminderPlan: skip orgs with status DELETED so deleted orgs get no renew SMS or notification.",
+    "_layout.tsx: do not allow /upgrade when user.org.status === 'DELETED'; redirect to /blocked.",
+    "Optional: add a DELETED guard to devAdmin.cancelSubscription, add a DELETED state to devSubscriptions, and save/restore prev_status in softDeleteOrg.",
+    "Optional DRY: SUPPORT_WHATSAPP is hard-coded both in blocked.tsx:9 and in convex/lib.ts:152."
+  ],
+  "critical_code_review_comments": [
+    "lib.require now runs assertNotDeleted for both the billing and non-billing paths for non-developers. That is correct and covers all org mutations and queries that go through require.",
+    "assertNotDeleted is in place in devReview approve, devAssignPlan, devSubAction (every action) and devPatchOrg (every patch, including tier/limits). All verified live.",
+    "statusFor maps DELETED_OWNER_MSG to 400 and DELETED_DEV_MSG to 403, because the latter contains 'اشتراك'. Both are acceptable."
+  ],
+  "updated_files": ["/app/backend/tests/test_soft_deleted_org_lockout.py (new)"],
+  "success_rate": {"backend": "86% (18/21; the 3 failures are read-only billing GETs that are not blocked)", "frontend": "100% for the blocked screen requirements; /upgrade deep link only blocked at submit"},
+  "seed_data_creation": "One PENDING upgrade request (TESTREF-*) was created for org_test_1 and cancelled at teardown. org_test_1 was soft-deleted twice and restored to ACTIVE each time (verified).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_soft_deleted_org_lockout.py soft-deletes org_test_1 and ALWAYS restores it in the module fixture teardown. Do not run cancel-subscription on org_test_1, because it wipes the Pro plan. The submit-upgrade-button in the payment sheet needs page.click(force=True), and the method option and pick-image need dispatch_event('click'). The toast shows briefly, so poll for its text.",
+  "rca_of_issue": "Fix verified: re-activation through billing is now blocked by assertNotDeleted in all developer re-activation paths, and in lib.require for owners."
+}

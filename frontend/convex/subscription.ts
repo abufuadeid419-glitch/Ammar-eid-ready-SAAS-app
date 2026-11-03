@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 
 import { mutation, query } from "./_generated/server";
-import { DEV, OWNER, audit, catalogOf, clean, cleanAll, isPro, notify, nowIso, orgById, orgLimits, orgUsage, prorate, periodPrice, pubOf, require } from "./lib";
+import { DEV, assertNotDeleted, OWNER, audit, catalogOf, clean, cleanAll, isPro, notify, nowIso, orgById, orgLimits, orgUsage, prorate, periodPrice, pubOf, require } from "./lib";
 
 // GET /api/billing/catalog — features + resources the developer defined (everyone signed in can read labels).
 export const catalogGet = query({
@@ -109,6 +109,7 @@ export const devSubAction = mutation({
     const user = await require(ctx, a.token, DEV);
     const org: any = await orgById(ctx, a.id);
     if (!org) throw new Error("المؤسسة غير موجودة");
+    assertNotDeleted(org);
     const now = Date.now();
     let patch: any;
     switch (a.action) {

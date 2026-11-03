@@ -148,12 +148,22 @@ export async function orgById(ctx: QueryCtx, org_id?: string | null) {
 // Role gate equivalent to server.py require(*roles). Returns the user or throws.
 // `billing: true` = subscription/payment routes: an owner of a frozen / suspended / expired org must still be able
 // to see their plan and pay to renew, so only the role is checked.
+// Soft-deleted org: every operation (including payment/renewal) stops until the developer restores it.
+export const SUPPORT_WHATSAPP = "+963947744162";
+export const DELETED_OWNER_MSG = `تم حذف مؤسستك بسبب مخالفة أو عدم الدفع، وتم إيقاف جميع عمليات المؤسسة. الحساب موقوف — يرجى التواصل مع فريق الدعم عبر واتساب: ${SUPPORT_WHATSAPP}`;
+export const DELETED_DEV_MSG = "هذه المؤسسة محذوفة — استعدها أولاً من أدوات الحذف قبل أي تعديل على الاشتراك";
+export function assertNotDeleted(org: any, msg = DELETED_DEV_MSG) {
+  if (org?.status === "DELETED") throw new Error(msg);
+}
+
 export async function require(ctx: QueryCtx, token: string | undefined, roles: string[], opts: { billing?: boolean } = {}) {
   const user = await getUser(ctx, token);
   const key = roleKey(user);
   if (!key || !roles.includes(key)) throw new Error("ليس لديك صلاحية");
+  if (key !== "DEVELOPER" && opts.billing) assertNotDeleted(await orgById(ctx, user.org_id), DELETED_OWNER_MSG);
   if (key !== "DEVELOPER" && !opts.billing) {
     const org = await orgById(ctx, user.org_id);
+    assertNotDeleted(org, DELETED_OWNER_MSG);
     if (!org || org.status !== "ACTIVE") throw new Error("اشتراك المؤسسة غير فعال");
     // Expired trial = Free plan (keeps working, Pro features locked); expired paid licence blocks.
     if (org.plan !== "TRIAL" && isExpired(org)) throw new Error("انتهى اشتراك المؤسسة");

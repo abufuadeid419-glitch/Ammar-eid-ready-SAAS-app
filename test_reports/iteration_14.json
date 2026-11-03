@@ -1,0 +1,53 @@
+{
+  "summary": "Tested (1) the owner GPS screen redesign (/agents-map, 390x844) and (2) the developer delete tools on the live Convex backend fearless-ostrich-878. Backend: 21/21 pytest pass (test_dev_delete_powers.py), covering RBAC for owner and agent on all 6 /dev delete routes, rejection of a wrong hard-delete confirm, soft delete + restore of org_test_1, plan create/delete/audit, the three user-delete guards, and deletion of a payment request with its audit entry. Frontend GPS: stats tiles, empty state, map with marker, legend, search and the 4 filter chips (36px tall, laid out in one horizontal row) all work. agent-location row opens AgentMapSheet, the no-location row renders, the 'خطوط سير اليوم' tab works, and there were 0 page errors. Frontend dev: org-danger-zone shows the 3 buttons. The hard-delete confirm sheet explains the consequences, and the button stays disabled until the exact org name is typed (it was NOT confirmed). The delete-request-button opens a confirm sheet. delete-plan-button deleted a TEST plan end-to-end. org_test_1 was restored to ACTIVE and verified ACTIVE at the end. One real gap: a soft-deleted org can be re-activated through billing, and its owner sees a misleading 'subscription expired' screen.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /dev/orgs/:id/soft-delete (interaction with billing routes)", "issue": "A soft-deleted (DELETED) org is still reachable through billing routes, because require(..., {billing:true}) only checks the role. Verified: with org_test_1 DELETED, the owner got 200 from GET /upgrade-requests, /plans and /payment-methods, and the app sent the owner to /blocked showing 'انتهى اشتراك المؤسسة. يرجى التجديد' with a renew CTA. The owner can submit a payment request. Approving it (billing.ts:558), devAssignPlan (billing.ts:604) or the unfreeze/resume actions (subscription.ts:123/131) set status ACTIVE without any DELETED check, which silently undoes the soft delete.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /dev/orgs/:id/soft-delete {restore:true}", "issue": "Restore always sets status ACTIVE (devAdmin.ts:88), so the org's previous status (SUSPENDED/FROZEN/EXPIRED/GRACE) is lost. Restoring a suspended or frozen org un-suspends it. The previous status should be stored on soft delete and restored from it."},
+      {"endpoint": "POST /dev/orgs/:id/cancel-subscription", "issue": "This is a code review only; the endpoint was not run. The patch sets status ACTIVE for anything that is not DELETED (devAdmin.ts:151), so cancelling the subscription of a SUSPENDED org lifts the suspension. It should keep SUSPENDED. There is also a redundant getUser() call before require()."},
+      {"endpoint": "POST /dev/orgs/:id/delete (purgeBatch)", "issue": "Each batch does .filter(org_id) over the whole table with no index (devAdmin.ts:28), and each row costs a full-table scan. On large tables this can hit Convex per-transaction read limits partway through. The delete is not atomic, so a failure leaves the org half-purged. Use the by_org indexes where they exist."},
+      {"endpoint": "POST /dev/orgs/:id/delete", "issue": "licenses.org_id (schema has org_id on licenses) is not cleared or deleted, which leaves a dangling org reference. Members' notifications and sessions are kept, which is acceptable because accounts survive."},
+      {"endpoint": "POST /dev/plans/:id/delete", "issue": "Orgs on the deleted plan keep plan_id pointing at a plan that no longer exists. The response returns orgs_on_plan but the UI gives no warning when that count is > 0. Any renewal or upgrade code that looks up the plan by org.plan_id should handle the missing plan."},
+      {"endpoint": "POST /dev/users/:id/delete", "issue": "Only distributor_inventory and the user's auth rows are cleaned. agent_locations, routes and sales_targets rows for that user_id stay behind as orphans."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Blocked screen for a soft-deleted org", "issue": "The owner of a DELETED org sees 'انتهى اشتراك المؤسسة… يرجى التجديد' plus a renew button. The message should say the org was deleted or disabled by the administrator, and the renew CTA should be hidden.", "testID": "n/a (/blocked)", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/agents-map", "issues": [
+        "The status Badge ('متصل الآن' / 'غير متصل') is drawn in its own row above each AgentLocationRow card and looks detached from it. Put the badge inside the card header.",
+        "The legend row ('اضغط على أي موزع لعرض مساره') still shows when there is no map (empty state). Hide it when html is null.",
+        "In the gps-search-input placeholder the Arabic text looks wrongly shaped and spaced ('...ا بحث عن موزع') in the web preview."
+      ]},
+      {"screen": "AgentMapSheet header", "issue_note": "pre-existing", "issues": ["The live caption 'مباشر · تحديث تلقائي كل دقيقة · آخر تحديث…' is cut off at 390px."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_dev_delete_powers.py", "/app/test_reports/pytest/dev_delete.xml"],
+  "action_items": [
+    "Block DELETED orgs on billing routes. In lib.require with billing:true, throw when org.status === 'DELETED'. Also add DELETED guards to approve (billing.ts:558), devAssignPlan (billing.ts:604) and the devSubAction resume/unfreeze actions, so nothing except softDeleteOrg{restore} can re-activate a deleted org.",
+    "On /blocked, show a 'deleted by administrator' message with no renew CTA when org.status === 'DELETED'.",
+    "softDeleteOrg: save prev_status on delete and restore to it instead of always setting ACTIVE.",
+    "cancelSubscription: keep SUSPENDED (and DELETED) status; only change ACTIVE/EXPIRED/GRACE/FROZEN to ACTIVE-Free.",
+    "purgeBatch: use the by_org index (withIndex) instead of a full-table .filter, to avoid read limits on large orgs. Also clean licenses with this org_id.",
+    "deleteUser: also purge agent_locations, routes and sales_targets for the user_id.",
+    "Optional: fix the stale comments in devAdmin.ts that say 'DELETE /api/dev/orgs/:id?mode=hard'; the actual route is POST /dev/orgs/:id/delete."
+  ],
+  "critical_code_review_comments": [
+    "Every exported devAdmin function goes through require(..., DEV). The internal mutations also re-check DEV (checkOrg, finishOrgDelete), and purgeBatch is internal-only. Confirmed: owner and agent get 'ليس لديك صلاحية'.",
+    "Hard delete covers all 25 org tables (all schema tables with org_id except users, licenses, payment_methods.org_ids, billing_ledger and audit_logs). It deletes receipt storage, unlinks members (role, org_id and employee_type set to null), and keeps billing_ledger and audit_logs as intended.",
+    "Confirm-name check uses trim() on both sides. The UI matches it: the button is disabled until typed.trim() === name.trim().",
+    "ConfirmDelete is a Sheet nested inside the org Sheet and the plan Sheet. It works on web; verify the nested-Modal behaviour on native iOS."
+  ],
+  "updated_files": ["/app/backend/tests/test_dev_delete_powers.py (new)"],
+  "success_rate": {"backend": "100% (21/21 pytest); 1 HIGH design gap found by an extra probe", "frontend": "100% of requested GPS and dev-delete UI checks passed"},
+  "seed_data_creation": "Posted one GPS location for user_test_agent (Damascus 33.5138,36.2765) through POST /locations to test the live/map/row states. Created and then deleted the plans TEST_DEL_PLAN and TEST_UI_DEL_PLAN. Deleted one CANCELLED/REJECTED upgrade request of org_test_1 (id c5684c2094924ae59489cfd39267b398). Soft-deleted org_test_1 3 times and restored it each time; final status is ACTIVE.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with: cd /app/backend/tests && python -m pytest test_dev_delete_powers.py -n0 (pytest.ini enables xdist; use -n0 so the soft-delete test does not run in parallel with others). Each run deletes one more CANCELLED/REJECTED request of org_test_1, and the test skips when none are left. NEVER send the real org name to /dev/orgs/org_test_1/delete. For dev UI tests, intercept **/api/auth/me with page.route and set has_password=true, then tap 'تخطي الجولة'. On /dev/billing pick the 'الخطط' segment with y<250. Request list filter defaults to 'المفتوحة'; tap 'الكل'."
+}

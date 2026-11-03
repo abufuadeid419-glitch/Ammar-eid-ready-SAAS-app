@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { Pressable, ScrollView, TextInput, View } from "react-native";
 
 import { fmtDate, money } from "@/src/api";
 import { AgentLocationRow } from "@/src/components/AgentLocationRow";
@@ -7,7 +7,7 @@ import { AgentMapSheet } from "@/src/components/AgentMapSheet";
 import { LeafletMap } from "@/src/components/LeafletMap";
 import { leafletHtml } from "@/src/maps";
 import { radius, spacing, useTheme } from "@/src/theme";
-import { Badge, Card, Chip, Empty, Ionicons, T, toLatinDigits } from "@/src/ui";
+import { Badge, Card, Empty, Ionicons, T, toLatinDigits } from "@/src/ui";
 
 // Presentation only: the data (agents, last_location, today_visits) and the map/marker/sheet behaviour are unchanged.
 const LIVE_MS = 15 * 60 * 1000;
@@ -89,7 +89,15 @@ export function AgentsMap({ agents }: { agents: any[] }) {
           style={{ flex: 1, color: colors.onSurface, fontSize: 14, textAlign: "right", paddingVertical: spacing.sm }} />
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }} style={{ flexGrow: 0 }} testID="gps-filters">
-        {FILTERS.map((f) => <Chip key={f.key} testID={`gps-filter-${f.key}`} label={f.label} selected={filter === f.key} onPress={() => setFilter(f.key)} />)}
+        {FILTERS.map((f) => {
+          const on = filter === f.key;
+          return (
+            <Pressable key={f.key} testID={`gps-filter-${f.key}`} onPress={() => setFilter(f.key)}
+              style={{ height: 36, flexShrink: 0, justifyContent: "center", paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: on ? colors.brandPrimary : colors.border, backgroundColor: on ? colors.brandTertiary : colors.surfaceSecondary }}>
+              <T v="caption" style={{ color: on ? colors.brandPrimary : colors.onSurface }}>{f.label}</T>
+            </Pressable>
+          );
+        })}
       </ScrollView>
 
       {!list.length && <Empty icon="people-outline" text="لا يوجد موزعون في هذا التصنيف" />}

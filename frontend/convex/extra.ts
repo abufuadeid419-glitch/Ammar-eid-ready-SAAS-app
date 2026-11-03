@@ -27,6 +27,7 @@ import {
   catalogOf,
   TIERS,
   cleanModules,
+  assertNotDeleted,
 } from "./lib";
 
 const PROFILE_FIELDS = ["name", "phone", "email", "address", "tax_no", "cr_no", "invoice_footer", "phone_country_code"];
@@ -543,6 +544,7 @@ export const devPatchOrg = mutation({
     await require(ctx, a.token, DEV);
     const org: any = await ctx.db.query("organizations").withIndex("by_biz_id", (q) => q.eq("id", a.id)).unique();
     if (!org) throw new Error("غير موجود");
+    assertNotDeleted(org);
     const patch: any = {};
     // Developer can override a company's tier, features and limits directly.
     if (a.plan_tier !== undefined) { if (!TIERS.includes(a.plan_tier)) throw new Error("فئة الخطة غير صالحة"); patch.plan_tier = a.plan_tier; }

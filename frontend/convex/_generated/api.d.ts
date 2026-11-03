@@ -15,6 +15,7 @@ import type * as crons from "../crons.js";
 import type * as customers from "../customers.js";
 import type * as dailySms from "../dailySms.js";
 import type * as deliveries from "../deliveries.js";
+import type * as devAdmin from "../devAdmin.js";
 import type * as edge from "../edge.js";
 import type * as employees from "../employees.js";
 import type * as extra from "../extra.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   customers: typeof customers;
   dailySms: typeof dailySms;
   deliveries: typeof deliveries;
+  devAdmin: typeof devAdmin;
   edge: typeof edge;
   employees: typeof employees;
   extra: typeof extra;

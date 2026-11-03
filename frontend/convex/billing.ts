@@ -8,6 +8,7 @@ import { sendSms } from "./edge";
 import {
   DEV, MODULES, OWNER, PLAN_FIELDS, PLAN_TIERS, audit, clean, cleanAll, cleanModules, getUser, isExpired, isPro, newId, notify, nowIso,
   catalogOf, orgById, orgLimits, periodPrice, prorate, pubOf, require, round2, snapshotPlan,
+  assertNotDeleted, DELETED_OWNER_MSG,
 } from "./lib";
 
 const OPEN = ["PENDING", "UNDER_REVIEW", "NEEDS_INFO"];
@@ -28,7 +29,8 @@ async function billingSettings(ctx: any) {
 export const settingsGet = query({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
-    await getUser(ctx, token);
+    const user = await getUser(ctx, token);
+    if (user.role !== "DEVELOPER") assertNotDeleted(await orgById(ctx, user.org_id), DELETED_OWNER_MSG);
     return await billingSettings(ctx);
   },
 });
@@ -52,6 +54,7 @@ export const plansList = query({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
     const user = await getUser(ctx, token);
+    if (user.role !== "DEVELOPER") assertNotDeleted(await orgById(ctx, user.org_id), DELETED_OWNER_MSG);
     const rows: any[] = await ctx.db.query("plans").collect();
     if (user.role === "DEVELOPER") {
       return rows
@@ -194,6 +197,7 @@ export const methodsList = query({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
     const user = await getUser(ctx, token);
+    if (user.role !== "DEVELOPER") assertNotDeleted(await orgById(ctx, user.org_id), DELETED_OWNER_MSG);
     const all: any[] = (await ctx.db.query("payment_methods").collect()).filter((m) => !m.archived);
     const rows = user.role === "DEVELOPER" ? all : all.filter((m) => m.active && (!m.org_ids?.length || m.org_ids.includes(user.org_id)));
     rows.sort((a, b) => (a.sort_order ?? 99) - (b.sort_order ?? 99));
@@ -329,6 +333,7 @@ export const requestsList = query({
   args: { token: v.string(), status: v.optional(v.string()), org_id: v.optional(v.string()) },
   handler: async (ctx, { token, status, org_id }) => {
     const user = await getUser(ctx, token);
+    if (user.role !== "DEVELOPER") assertNotDeleted(await orgById(ctx, user.org_id), DELETED_OWNER_MSG);
     let rows: any[];
     if (user.role === "DEVELOPER") {
       rows = org_id
@@ -543,6 +548,7 @@ export const devReview = mutation({
     const status = t[1];
     let orgAfter: any = null;
     if (status === "APPROVED") {
+      assertNotDeleted(org);
       // Same receipt reference approved before (other request) → never activate twice.
       const ref = (r.payment_ref ?? "").trim();
       if (ref && (await ctx.db.query("upgrade_requests").withIndex("by_status", (q) => q.eq("status", "APPROVED")).collect()).some((x: any) => x.id !== r.id && x.method_id === r.method_id && (x.payment_ref ?? "").trim() === ref))
@@ -597,6 +603,7 @@ export const devAssignPlan = mutation({
     const org: any = await orgById(ctx, a.org_id);
     const plan: any = pubOf(await ctx.db.query("plans").withIndex("by_biz_id", (q) => q.eq("id", a.plan_id)).unique());
     if (!org || !plan) throw new Error("المؤسسة أو الخطة غير موجودة");
+    assertNotDeleted(org);
     if (!(a.days >= 1 && a.days <= 3660)) throw new Error("المدة غير صالحة");
     const after = {
       plan: plan.tier === "FREE" ? "FREE" : "LICENSE", plan_id: plan.id, plan_name: plan.name, plan_tier: plan.tier === "FREE" ? null : plan.tier,
@@ -668,7 +675,7 @@ export const devStats = query({
 // Paid subscription expiry reminders: in-app notification + SMS to the owner with a renew link,
 // at `reminder_days` (billing settings, default 7), 3 days, 1 day and on expiry — each once per expiry date.
 function expiryReminderPlan(o: any, reminderDays: number) {
-  if (o.plan !== "LICENSE" || !o.expires_at || !o.owner_id || o.status === "SUSPENDED") return null;
+  if (o.plan !== "LICENSE" || !o.expires_at || !o.owner_id || ["SUSPENDED", "DELETED"].includes(o.status)) return null;
   const left = Math.ceil((Date.parse(o.expires_at) - Date.now()) / 86400000);
   const stage = left <= 0 ? (left > -2 ? "0" : null) : [reminderDays, 3, 1].includes(left) ? String(left) : null;
   if (!stage) return null;

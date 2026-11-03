@@ -48,3 +48,10 @@
 - Invite requires name (2–60). Activation (EMP- code / QR) sets user.name = invite name + name_locked; /auth/name rejects employees ("اسم الموظف يحدده المالك فقط"). Login/homeFor never ask unactivated users or employees for a name (owners still asked after activating).
 - PATCH /api/employees/:id/name (OWNER, audited) edits employee or pending-invite name; UI rename icon + sheet in team list.
 - SaaS fixes: require(..., {billing:true}) lets frozen/suspended/expired owners view plan & pay; promo price must be < regular price; yearly saving uses 12 months.
+
+## Iteration 2026-11 (i) — Owner GPS UI reorg + Developer delete powers
+- GPS (UI only, src/components/AgentsMap.tsx): stats tiles (online/offline/visits/sales), bigger map + legend, search, filter chips (all/online ≤15min/offline/no location), sorted list incl. agents without location; same data, markers, sheets, tracking logic.
+- convex/devAdmin.ts (DEV only, audited): org hard delete (typed-name confirm, batched purge of all org tables + receipts, members unlinked, ledger/audit kept), org soft delete/restore (status DELETED), cancel subscription (→ Free), plan hard delete (+versions), user delete (sessions/passwords/notifications/inventory; owners need org deleted first), payment request delete (+receipt). UI: OrgDangerZone in dev org sheet, delete plan/request buttons, ConfirmDelete sheet.
+
+## 2026-06 Soft-deleted org lockout
+- DELETED orgs: all owner routes (incl. billing/plans/methods/requests/settings) throw support msg (+963947744162); dev assign/patch/subAction/approve blocked until restore; expiry reminders skip DELETED; /blocked shows WhatsApp support; /upgrade hidden. Test: backend/tests/test_soft_deleted_org_lockout.py

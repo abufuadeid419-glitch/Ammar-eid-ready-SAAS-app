@@ -71,7 +71,7 @@ function Gate() {
     const allowed =
       (seg === "reports" && ["owner", "acct"].includes(target)) ||
       (seg === "journal" && ["owner", "acct"].includes(target)) ||
-      (seg === "upgrade" && user?.role === "OWNER") ||
+      (seg === "upgrade" && user?.role === "OWNER" && user?.org?.status !== "DELETED") ||
       seg === "legal" ||
       seg === "goodbye" ||
       false ||
